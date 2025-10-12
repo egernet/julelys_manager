@@ -43,19 +43,24 @@ struct JulelysManager: ParsableCommand {
         print("\u{1B}[\(1);\(0)HLED will start:")
 
         let sequences: [SequenceType] = [
-//            JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "test.js"),
-//            JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "rainbow.js"),
-//            TestColorSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "test.js"),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "rainbow.js"),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            TestColorSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
             TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
             FireworksSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.pink, .green, .blue, .red, .yallow, .trueWhite, .purple, .magenta, .orange]),
-//
-//            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
-//            
-//            StarSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, color: .trueWhite),
-//            MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green], numberOfmatrixs: 150),
-//            MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green, .green, .red, .green, .green, .trueWhite, .yallow], numberOfmatrixs: 200),
-//            MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.red, .red, .red, .red, .trueWhite], numberOfmatrixs: 200),
-//            RainbowCycleSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, iterations: 5)
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            StarSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, color: .trueWhite),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green], numberOfmatrixs: 150),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green, .green, .red, .green, .green, .trueWhite, .yallow], numberOfmatrixs: 200),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.red, .red, .red, .red, .trueWhite], numberOfmatrixs: 200),
+            TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight),
+            RainbowCycleSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, iterations: 5)
         ]
 
         let executesMode: Mode = .mode(mode)
