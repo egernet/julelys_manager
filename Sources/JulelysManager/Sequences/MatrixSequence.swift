@@ -44,6 +44,7 @@ final class MatrixSequence: SequenceType {
     let matrixWidth: Int
     var matrixs: [TheMatrix] = []
     let colors: [Color]
+    var stop: Bool = false
 
     var canStop: Bool {
         return !(number > 0 || matrixs.isEmpty == false)
@@ -59,12 +60,13 @@ final class MatrixSequence: SequenceType {
     func runSequence() {
         reset()
 
-        while canStop == false {
+        while canStop == false, stop == false {
             moveColors()
         }
     }
 
     func reset() {
+        stop = false
         number = numberOfmatrixs
         matrixs = []
     }
@@ -72,6 +74,7 @@ final class MatrixSequence: SequenceType {
     private func moveColors() {
         for x in 0..<matrixHeight {
             for y in 0..<matrixWidth {
+                guard stop == false else { return }
                 delegate?.sequenceSetPixelColor(self, point: .init(x: x, y: y), color: .black)
             }
         }
@@ -79,6 +82,7 @@ final class MatrixSequence: SequenceType {
         let matrixs = self.matrixs
 
         matrixs.forEach { theMatrix in
+            guard stop == false else { return }
             delegate?.sequenceSetPixelColor(self, point: theMatrix.getNextPoint(), color: theMatrix.color)
 
             for i in 1...theMatrix.length {

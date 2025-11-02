@@ -7,6 +7,7 @@ final class FadeColorSequence: SequenceType {
     var color: Color = .black
     var goUp: Bool = true
     var ledInLive: Int = 0
+    var stop: Bool = false
 
     init(matrixWidth: Int, matrixHeight: Int) {
         self.matrixHeight = matrixHeight
@@ -14,7 +15,8 @@ final class FadeColorSequence: SequenceType {
     }
 
     func runSequence() {
-        while true {
+        stop = false
+        while true, stop == false {
             switchColor()
         }
     }

@@ -39,6 +39,7 @@ final class TwistSequence: SequenceType {
     let color: Color
     var matrixs: [Ball] = []
     var number: Int = 0
+    var stop: Bool = false
 
     var canStop: Bool {
         return matrixs.isEmpty == true
@@ -53,12 +54,13 @@ final class TwistSequence: SequenceType {
     func runSequence() {
         reset()
         
-        while canStop == false {
+        while canStop == false, stop == false {
             moveColors()
         }
     }
 
     func reset() {
+        stop = false
         matrixs = []
 
         for i in 0..<matrixWidth {

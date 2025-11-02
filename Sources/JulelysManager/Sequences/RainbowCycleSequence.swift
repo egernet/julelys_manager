@@ -5,6 +5,7 @@ final class RainbowCycleSequence: SequenceType {
     let matrixHeight: Int
     let matrixWidth: Int
     let iterations: Int
+    var stop: Bool = false
 
     init(matrixWidth: Int, matrixHeight: Int, iterations: Int) {
         self.matrixHeight = matrixHeight
@@ -20,6 +21,7 @@ final class RainbowCycleSequence: SequenceType {
         for i in 0..<255 * iterations {
             for y in 0..<matrixWidth {
                 for x in 0..<matrixHeight {
+                    guard stop == false else { return }
                     let index = ((x * 255 / matrixHeight) + i) & 255
                     let color = wheel(index)
                     delegate?.sequenceSetPixelColor(self, point: .init(x: x, y: y), color: color)

@@ -5,13 +5,15 @@ final class TestColorSequence: SequenceType {
     let matrixHeight: Int
     let matrixWidth: Int
     let colors: [Color] = [.red, .green, .blue, .trueWhite, .black]
-
+    var stop: Bool = false
+    
     init(matrixWidth: Int, matrixHeight: Int) {
         self.matrixHeight = matrixHeight
         self.matrixWidth = matrixWidth
     }
 
     func runSequence() {
+        stop = false
         switchColor()
     }
 
@@ -20,6 +22,7 @@ final class TestColorSequence: SequenceType {
 
         for color in colors {
             for i in 0..<numberOfLeds {
+                guard stop == false else { return }
                 delegate?.sequenceSetPixelColor(self, pos: i, color: color)
             }
 
@@ -32,6 +35,7 @@ final class TestColorSequence: SequenceType {
         let numberOfLeds = matrixHeight * matrixWidth
 
         for i in 0..<numberOfLeds {
+            guard stop == false else { return }
             delegate?.sequenceSetPixelColor(self, pos: i, color: colors[i % 5])
         }
 
@@ -45,6 +49,7 @@ final class TestOneLEDColorSequence: SequenceType {
     let matrixHeight: Int
     let matrixWidth: Int
     let colors: [Color] = [.red, .green, .blue, .trueWhite, .black]
+    var stop: Bool = false
 
     init(matrixWidth: Int, matrixHeight: Int) {
         self.matrixHeight = matrixHeight
@@ -52,6 +57,7 @@ final class TestOneLEDColorSequence: SequenceType {
     }
 
     func runSequence() {
+        stop = false
         switchColor()
     }
 
@@ -59,6 +65,8 @@ final class TestOneLEDColorSequence: SequenceType {
         let numberOfLeds = matrixHeight * matrixWidth
 
         for color in colors {
+            guard stop == false else { return }
+            
             for i in 0..<numberOfLeds {
                 delegate?.sequenceSetPixelColor(self, pos: i, color: color)
             }
@@ -72,6 +80,7 @@ final class TestOneLEDColorSequence: SequenceType {
         let numberOfLeds = matrixHeight * matrixWidth
 
         for i in 0..<numberOfLeds {
+            guard stop == false else { return }
             delegate?.sequenceSetPixelColor(self, pos: i, color: colors[i % 5])
         }
 

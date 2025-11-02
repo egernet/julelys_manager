@@ -11,7 +11,8 @@ protocol SequenceType {
     var matrixWidth: Int {get}
     var matrixHeight: Int {get}
     var name: String { get }
-
+    var stop: Bool { get set }
+    
     func runSequence()
 }
 

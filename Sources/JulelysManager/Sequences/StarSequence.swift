@@ -46,6 +46,7 @@ final class StarSequence: SequenceType {
     let matrixWidth: Int
     var stars: [Star] = []
     let color: Color
+    var stop: Bool = false
 
     var canStop: Bool {
         return !(number > 0 || stars.isEmpty == false)
@@ -61,12 +62,13 @@ final class StarSequence: SequenceType {
         reset()
         addStars()
 
-        while canStop == false {
+        while canStop == false, stop == false {
             showStars()
         }
     }
 
     func reset() {
+        stop = false
         number = numberOfmatrixs
         stars = []
     }

@@ -9,6 +9,7 @@ final class JSSequence: SequenceType {
     let matrixWidth: Int
     let colors: [Color] = [.red, .green, .blue, .trueWhite, .black]
     let jsFile: String
+    var stop: Bool = false
 
     private var jsEngine: OpaquePointer?
     private var buffer: [Int8] = []

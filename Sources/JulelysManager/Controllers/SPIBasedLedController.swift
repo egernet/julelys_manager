@@ -38,6 +38,10 @@ final class SPIBasedLedController: LedControllerProtocol {
     }
     
     func update(_ sequences: [SequenceType]) {
+        for var sequence in self.sequences {
+            sequence.stop = true
+        }
+        
         self.sequences = sequences
     }
 

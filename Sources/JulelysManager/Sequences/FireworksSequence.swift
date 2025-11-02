@@ -60,6 +60,7 @@ final class FireworksSequence: SequenceType {
     var stars: [FireworksStar] = []
     var color: Color = .trueWhite
     let colors: [Color]
+    var stop: Bool = false
 
     var canStop: Bool {
         return !(number > 0 || stars.isEmpty == false)
@@ -75,12 +76,13 @@ final class FireworksSequence: SequenceType {
         reset()
         addStars()
 
-        while canStop == false {
+        while canStop == false, stop == false {
             showStars()
         }
     }
 
     func reset() {
+        stop = false
         var indexColor = Int.random(in: 0..<colors.count)
         for _ in 0...colors.count {
             indexColor = Int.random(in: 0..<colors.count)

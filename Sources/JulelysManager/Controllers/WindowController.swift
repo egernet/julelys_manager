@@ -23,7 +23,7 @@ class WindowController: NSWindowController, LedControllerProtocol {
         let numberOfLedOnRow = matrixHeight
         let mask: NSWindow.StyleMask = [.titled, .closable]
         let addMargen = (margen * 2)
-        let rect: NSRect = .init(x: 0, y: 0, width: CGFloat(numberOfLedOnRow) * ledSize + addMargen, height: CGFloat(matrixWidth) * ledSize + addMargen)
+        let rect: NSRect = .init(x: 0, y: 0, width: CGFloat(matrixWidth) * ledSize + addMargen, height: CGFloat(numberOfLedOnRow) * ledSize + addMargen)
         let window = NSWindow(contentRect: rect, styleMask: mask, backing: .buffered, defer: false)
         window.title = "SequenceWS281x"
 
@@ -63,6 +63,10 @@ class WindowController: NSWindowController, LedControllerProtocol {
     }
     
     func update(_ sequences: [SequenceType]) {
+        for var sequence in self.sequences {
+            sequence.stop = true
+        }
+        
         self.sequences = sequences
         
         for var sequence in sequences {
@@ -121,7 +125,7 @@ class LEDView: NSView {
         for y in 0..<matrixWidth {
             for x in 0..<matrixHeight {
                 let point: Point = .init(x: x, y: y)
-                let frame: CGRect = .init(x: point.cgPoint.x * size + margen, y: point.cgPoint.y * size + margen, width: size, height: size)
+                let frame: CGRect = .init(x: point.cgPoint.y * size + margen, y: point.cgPoint.x * size + margen, width: size, height: size)
 
                 let layer = CAShapeLayer()
                 layer.path = CGPath(ellipseIn: frame, transform: nil)
