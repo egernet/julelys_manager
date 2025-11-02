@@ -8,7 +8,7 @@ let colorWheel = function( i, x ) {
     return { red: r, green: g, blue: b};
 };
 
-for(let i = 0; i < 12; i++) {
+for(let i = 0; i < matrix.height; i++) {
     for(let y = 0; y < matrix.width; y++) {
         for(let x = 0; x < matrix.height; x++) {
             let showColor = colorWheel(i, x);

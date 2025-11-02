@@ -7,11 +7,11 @@ import CoreGraphics
 class WindowController: NSWindowController, LedControllerProtocol {
     var matrixHeight: Int
     let matrixWidth: Int
-    let sequences: [SequenceType]
     let ledSize: CGFloat = 10
     let margen: CGFloat = 10
-
     let contentView: LEDView
+    
+    private(set) var sequences: [SequenceType]
 
     var applicationDelegate: ApplicationDelegate?
 
@@ -61,14 +61,21 @@ class WindowController: NSWindowController, LedControllerProtocol {
 
         showWindow(application)
     }
+    
+    func update(_ sequences: [SequenceType]) {
+        self.sequences = sequences
+        
+        for var sequence in sequences {
+            sequence.delegate = self
+        }
+    }
 
-    func runSequence() {
+    func runSequences() {
         for sequence in sequences {
             sequence.runSequence()
         }
     }
 
-    @MainActor
     private func updatePixels() {
         DispatchQueue.main.async {
             self.contentView.setNeedsDisplay(self.contentView.frame)
@@ -143,7 +150,7 @@ class ApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         DispatchQueue.global().async {
             while self.stop == false {
-                self.controller.runSequence()
+                self.controller.runSequences()
             }
         }
     }

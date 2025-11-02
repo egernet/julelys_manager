@@ -4,7 +4,7 @@ import SwiftSPI
 final class SPIBasedLedController: LedControllerProtocol {
     let matrixWidth: Int
     let matrixHeight: Int
-    let sequences: [SequenceType]
+    private(set) var sequences: [SequenceType]
 
     private var buffer: [UInt8]
     private let spi: SwiftSPI
@@ -12,6 +12,7 @@ final class SPIBasedLedController: LedControllerProtocol {
     private let baudRate: Int
     private let lock = NSLock()
     private var isRunning = false
+    private let updateContentQueue = DispatchQueue(label: "dk.egernet.julelys")
 
     init(sequences: [SequenceType], matrixWidth: Int, matrixHeight: Int, spiPath: String = "/dev/spidev1.1", baudRate: Int = 2_500_000) {
         self.matrixWidth = matrixWidth
@@ -27,25 +28,76 @@ final class SPIBasedLedController: LedControllerProtocol {
         spi.setup()
 
         isRunning = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.spiLoop()
+        
+        updateContentQueue.async { [weak self] in
+            self?.spiLoop()
+        }
+
+        // runColorLoopMe()
+        runSequences()
+    }
+    
+    func update(_ sequences: [SequenceType]) {
+        self.sequences = sequences
+    }
+
+    func runColorLoopMe() {
+        let colors: [(r: UInt8, g: UInt8, b: UInt8, w: UInt8)] = [
+            (255, 0, 0, 0),   // Rød
+            (0, 255, 0, 0),   // Grøn
+            (0, 0, 255, 0),   // Blå
+            (0, 0, 0, 255)    // Hvid
+        ]
+
+        while isRunning {
+            for color in colors {
+                let frame = createFrame(red: color.r, green: color.g, blue: color.b, white: color.w)
+                
+                lock.lock()
+                buffer = frame
+                lock.unlock()
+
+                Thread.sleep(forTimeInterval: 0.5)
+            }
         }
     }
 
-    func runSequence() {
-        for var sequence in sequences {
-            sequence.delegate = self
-            sequence.runSequence()
+    func createFrame(red: UInt8, green: UInt8, blue: UInt8, white: UInt8) -> [UInt8] {
+        var frameData: [UInt8] = []
+        for _ in 0..<matrixWidth {
+            for _ in 0..<matrixHeight {
+                frameData.append(contentsOf: [red, green, blue, white])
+            }
+        }
+        return frameData
+    }
+
+    func runSequences() {
+        while isRunning {
+            let sequences = self.sequences
+            for var sequence in sequences {
+                sequence.delegate = self
+                sequence.runSequence()
+            }
         }
     }
 
     private func setPixel(x: Int, y: Int, color: Color) {
-        guard x < matrixWidth, y < matrixHeight else { return }
-        let index = (y * matrixWidth + x) * 4
+        let col = x
+        let row = y
+
+        let indexStart = (row * matrixHeight * 4)
+        let index = indexStart + (col * 4)
+
+        // print("row: \(row) col: \(col), index: \(index)")
+
+        guard index >= 0, index < (buffer.count - 4) else {
+            return
+        }
 
         lock.lock()
-        buffer[index + 0] = color.green
-        buffer[index + 1] = color.red
+        buffer[index + 0] = color.red
+        buffer[index + 1] = color.green
         buffer[index + 2] = color.blue
         buffer[index + 3] = color.white
         lock.unlock()

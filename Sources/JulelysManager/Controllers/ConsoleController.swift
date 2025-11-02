@@ -1,11 +1,10 @@
 import Foundation
-import rpi_ws281x_swift
 
 class ConsoleController: LedControllerProtocol {
     var matrixHeight: Int
     let matrixWidth: Int
-    let sequences: [SequenceType]
-    let stop = false
+    private(set) var sequences: [SequenceType]
+    private(set) var stop = false
 
     init(sequences: [SequenceType], matrixWidth: Int, matrixHeight: Int) {
         self.matrixHeight = matrixHeight
@@ -20,14 +19,19 @@ class ConsoleController: LedControllerProtocol {
             sequence.delegate = self
         }
     }
+    
+    func update(_ sequences: [SequenceType]) {
+        self.sequences = sequences
+    }
 
     func start() {
         while stop == false {
-            runSequence()
+            runSequences()
         }
     }
 
-    func runSequence() {
+    func runSequences() {
+        let sequences = self.sequences
         for sequence in sequences {
             sequence.runSequence()
         }
@@ -57,11 +61,11 @@ extension ConsoleController: SequenceDelegate {
         updatePixels()
     }
 
-    func sequenceSetPixelColor(_ sequence: SequenceType, point: Point, color: rpi_ws281x_swift.Color) {
+    func sequenceSetPixelColor(_ sequence: SequenceType, point: Point, color: Color) {
         setPixelColor(point: point, color: color)
     }
 
-    func sequenceSetPixelColor(_ sequence: SequenceType, pos: Int, color: rpi_ws281x_swift.Color) {
+    func sequenceSetPixelColor(_ sequence: SequenceType, pos: Int, color: Color) {
         setPixelColor(pos: pos, color: color)
     }
 }

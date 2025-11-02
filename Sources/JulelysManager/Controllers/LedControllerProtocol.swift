@@ -7,14 +7,13 @@ protocol LedControllerProtocol {
     /// Get the height of  the matrix
     var matrixHeight: Int { get }
     
-    /// Get list of sequence
-    var sequences: [SequenceType] { get }
-
     /// Start up the controller
     func start()
     
     /// Begin run the sequences
-    func runSequence()
+    func runSequences()
+    
+    func update(_ sequences: [SequenceType])
 }
 
 extension LedControllerProtocol {
