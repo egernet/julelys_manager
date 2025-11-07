@@ -60,7 +60,7 @@ struct JulelysManager: ParsableCommand {
             )
         case .app:
             controller = WindowController(
-                sequences: [JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "test.js")],
+                sequences: [JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "skyblue.js")],
                 matrixWidth: matrixWidth,
                 matrixHeight: matrixHeight
             )
