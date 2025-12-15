@@ -140,6 +140,16 @@ struct JulelysManager: ParsableCommand {
                     } catch {
                         return (false, error.localizedDescription)
                     }
+                },
+                getStatus: {
+                    StatusResponse(
+                        isRunning: true,
+                        activeSequences: activeSequences.map { $0.info.name },
+                        availableSequencesCount: sequences.count,
+                        matrixWidth: width,
+                        matrixHeight: height,
+                        mode: executesMode.rawValue
+                    )
                 }
             )
         }
@@ -151,7 +161,8 @@ struct JulelysManager: ParsableCommand {
         allSequences: @escaping () -> [SequenceInfo],
         runSequences: @escaping ([String]) -> Void = { _ in },
         createSequence: @escaping (String, String, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
-        updateSequence: @escaping (String, String?, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") }
+        updateSequence: @escaping (String, String?, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
+        getStatus: @escaping () -> StatusResponse
     ) async {
         do {
             try await JulelysDaemon.start { inquiry in
@@ -169,8 +180,7 @@ struct JulelysManager: ParsableCommand {
                     return resp
 
                 case .getStatus:
-                    let resp = ["power": "true", "activeSequence": "Rainbow"]
-                    return resp
+                    return getStatus()
 
                 case .runSequences:
                     guard let names = inquiry.names else {

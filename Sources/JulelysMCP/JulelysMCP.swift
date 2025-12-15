@@ -7,6 +7,7 @@ enum RegisteredTools: String {
     case runSequences
     case createSequence
     case updateSequence
+    case getStatus
 }
 
 @main
@@ -150,6 +151,23 @@ extension JulelysMCP {
                         "required": .array([.string("name"), .string("jsCode")]),
                     ])
                 ),
+                Tool(
+                    name: RegisteredTools.getStatus.rawValue,
+                    description: """
+                        Get the current status of the Julelys Manager 🎄
+
+                        Returns information about:
+                        - Whether the manager is running
+                        - Currently active sequences
+                        - Number of available sequences
+                        - Matrix dimensions (width x height)
+                        - Current mode (real/app/console)
+                        """,
+                    inputSchema: .object([
+                        "type": .string("object"),
+                        "properties": .object([:]),
+                    ])
+                ),
             ]
             return .init(tools: tools)
         }
@@ -241,6 +259,12 @@ extension JulelysMCP {
                 content: [.text(updateSequenceHandler(name: name, description: description, jsCode: jsCode))],
                 isError: false
             )
+
+        case .getStatus:
+            return .init(
+                content: [.text(getStatusHandler())],
+                isError: false
+            )
         }
     }
     
@@ -309,6 +333,30 @@ extension JulelysMCP {
             return "✅ Sequence '\(response.sequenceName ?? name)' updated successfully!"
         } catch {
             return "❌ Error updating sequence: \(error.localizedDescription)"
+        }
+    }
+
+    private static func getStatusHandler() -> String {
+        do {
+            let request = RequestCommand(cmd: .getStatus)
+            let response: StatusResponse = try sendCommand(request, decodeTo: StatusResponse.self)
+
+            let activeList = response.activeSequences.isEmpty
+                ? "None"
+                : response.activeSequences.joined(separator: ", ")
+
+            return """
+                🎄 Julelys Manager Status
+
+                Running: \(response.isRunning ? "Yes" : "No")
+                Mode: \(response.mode)
+                Matrix: \(response.matrixWidth) x \(response.matrixHeight) (\(response.matrixWidth * response.matrixHeight) LEDs)
+
+                Active sequences: \(activeList)
+                Available sequences: \(response.availableSequencesCount)
+                """
+        } catch {
+            return "❌ Error getting status: \(error.localizedDescription)\n\nIs JulelysManager running?"
         }
     }
 }
