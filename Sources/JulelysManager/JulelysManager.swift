@@ -233,6 +233,41 @@ struct JulelysManager: ParsableCommand {
                     } else {
                         return CreateSequenceResponse(status: "error", error: result.error)
                     }
+
+                case .getSequenceCode:
+                    guard let name = inquiry.sequenceName else {
+                        return SequenceCodeResponse(
+                            name: "",
+                            description: "",
+                            jsCode: nil,
+                            isCustom: false,
+                            error: "Missing required field: sequenceName"
+                        )
+                    }
+
+                    // Check if it's a custom sequence
+                    if let codeData = CustomSequenceStorage.getCode(name: name) {
+                        return SequenceCodeResponse(
+                            name: name,
+                            description: codeData.description,
+                            jsCode: codeData.jsCode,
+                            isCustom: true
+                        )
+                    }
+
+                    // Check if it exists as a built-in sequence
+                    let sequenceList = allSequences()
+                    if let info = sequenceList.first(where: { $0.name == name }) {
+                        return SequenceCodeResponse(
+                            name: info.name,
+                            description: info.description,
+                            jsCode: nil,
+                            isCustom: false,
+                            error: "Built-in sequences don't have viewable JS code"
+                        )
+                    }
+
+                    return SequenceCodeResponse.notFound(name)
                 }
             }
         } catch {
@@ -464,6 +499,34 @@ enum CustomSequenceStorage {
         }
 
         throw StorageError.sequenceNotFound(name)
+    }
+
+    static func getCode(name: String) -> (jsCode: String, description: String)? {
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: directoryURL.path) else {
+            return nil
+        }
+
+        do {
+            let files = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+            let metadataFiles = files.filter { $0.pathExtension == "json" }
+
+            for metadataURL in metadataFiles {
+                let data = try Data(contentsOf: metadataURL)
+                let metadata = try JSONDecoder().decode(CustomSequenceMetadata.self, from: data)
+
+                if metadata.name == name {
+                    let jsFileURL = directoryURL.appendingPathComponent(metadata.jsFileName)
+                    let jsCode = try String(contentsOf: jsFileURL, encoding: .utf8)
+                    return (jsCode, metadata.description)
+                }
+            }
+        } catch {
+            fputs("⚠️ Failed to get code for '\(name)': \(error)\n", stderr)
+        }
+
+        return nil
     }
 
     enum StorageError: Error, LocalizedError {

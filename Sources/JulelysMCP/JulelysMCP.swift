@@ -8,6 +8,7 @@ enum RegisteredTools: String {
     case createSequence
     case updateSequence
     case getStatus
+    case getSequenceCode
 }
 
 @main
@@ -168,6 +169,26 @@ extension JulelysMCP {
                         "properties": .object([:]),
                     ])
                 ),
+                Tool(
+                    name: RegisteredTools.getSequenceCode.rawValue,
+                    description: """
+                        Get the JavaScript code for a custom sequence 🎄
+
+                        Returns the JS code and description for a custom sequence.
+                        Only works for sequences created via createSequence.
+                        Built-in sequences (Swift-based) don't have viewable code.
+                        """,
+                    inputSchema: .object([
+                        "type": .string("object"),
+                        "properties": .object([
+                            "name": .object([
+                                "type": .string("string"),
+                                "description": .string("Name of the sequence to get code for"),
+                            ])
+                        ]),
+                        "required": .array([.string("name")]),
+                    ])
+                ),
             ]
             return .init(tools: tools)
         }
@@ -265,6 +286,21 @@ extension JulelysMCP {
                 content: [.text(getStatusHandler())],
                 isError: false
             )
+
+        case .getSequenceCode:
+            guard let nameValue = params.arguments?["name"],
+                  case .string(let name) = nameValue
+            else {
+                return .init(
+                    content: [.text("❌ Missing required parameter: name")],
+                    isError: true
+                )
+            }
+
+            return .init(
+                content: [.text(getSequenceCodeHandler(name: name))],
+                isError: false
+            )
         }
     }
     
@@ -357,6 +393,33 @@ extension JulelysMCP {
                 """
         } catch {
             return "❌ Error getting status: \(error.localizedDescription)\n\nIs JulelysManager running?"
+        }
+    }
+
+    private static func getSequenceCodeHandler(name: String) -> String {
+        do {
+            let request = RequestCommand(cmd: .getSequenceCode, sequenceName: name)
+            let response: SequenceCodeResponse = try sendCommand(request, decodeTo: SequenceCodeResponse.self)
+
+            if let error = response.error {
+                return "❌ \(error)"
+            }
+
+            guard let jsCode = response.jsCode else {
+                return "❌ No code available for '\(name)'"
+            }
+
+            return """
+                📄 Sequence: \(response.name)
+                📝 Description: \(response.description)
+                🏷️ Type: \(response.isCustom ? "Custom (JS)" : "Built-in")
+
+                ```javascript
+                \(jsCode)
+                ```
+                """
+        } catch {
+            return "❌ Error getting sequence code: \(error.localizedDescription)"
         }
     }
 }
