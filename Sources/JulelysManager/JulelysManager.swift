@@ -42,7 +42,14 @@ struct JulelysManager: ParsableCommand {
     func run() {
 
         var sequences = loadAllSequence()
-        var activeSequences = [SequenceData]()
+
+        // Load saved active sequences from last session
+        let savedActiveNames = CustomSequenceStorage.loadActiveSequences()
+        var activeSequences = sequences.filter { savedActiveNames.contains($0.info.name) }
+
+        if !activeSequences.isEmpty {
+            fputs("▶️ Resuming with \(activeSequences.count) sequence(s): \(savedActiveNames.joined(separator: ", "))\n", stderr)
+        }
 
         print("\u{1B}[2J")
         print("\u{1B}[\(1);\(0)HLED will start:")
@@ -60,7 +67,6 @@ struct JulelysManager: ParsableCommand {
             )
         case .app:
             controller = WindowController(
-//                sequences: [JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "skyblue.js")],
                 sequences: activeSequences.map { $0.sequence },
                 matrixWidth: matrixWidth,
                 matrixHeight: matrixHeight
@@ -84,6 +90,9 @@ struct JulelysManager: ParsableCommand {
                 runSequences: { names in
                     activeSequences = sequences.filter { names.contains($0.info.name) }
                     controller.update(activeSequences.map { $0.sequence })
+
+                    // Save active sequences to disk
+                    CustomSequenceStorage.saveActiveSequences(names)
                 },
                 createSequence: { name, description, jsCode in
                     // Check if sequence already exists
@@ -108,6 +117,29 @@ struct JulelysManager: ParsableCommand {
                     } catch {
                         return (false, "Failed to save sequence: \(error.localizedDescription)")
                     }
+                },
+                updateSequence: { name, description, jsCode in
+                    // Update on disk
+                    do {
+                        try CustomSequenceStorage.update(name: name, description: description, jsCode: jsCode)
+
+                        // Update in-memory sequence
+                        if let index = sequences.firstIndex(where: { $0.info.name == name }) {
+                            let oldInfo = sequences[index].info
+                            let newSequence = SequenceData(
+                                id: oldInfo.id,
+                                name: oldInfo.name,
+                                description: description ?? oldInfo.description,
+                                sequence: JSSequence(matrixWidth: width, matrixHeight: height, jsCode: jsCode)
+                            )
+                            sequences[index] = newSequence
+                        }
+
+                        fputs("✏️ Updated sequence '\(name)'\n", stderr)
+                        return (true, nil)
+                    } catch {
+                        return (false, error.localizedDescription)
+                    }
                 }
             )
         }
@@ -118,7 +150,8 @@ struct JulelysManager: ParsableCommand {
     func startDaemon(
         allSequences: @escaping () -> [SequenceInfo],
         runSequences: @escaping ([String]) -> Void = { _ in },
-        createSequence: @escaping (String, String, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") }
+        createSequence: @escaping (String, String, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
+        updateSequence: @escaping (String, String?, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") }
     ) async {
         do {
             try await JulelysDaemon.start { inquiry in
@@ -162,6 +195,23 @@ struct JulelysManager: ParsableCommand {
 
                     if result.success {
                         return CreateSequenceResponse(status: "created", sequenceName: name)
+                    } else {
+                        return CreateSequenceResponse(status: "error", error: result.error)
+                    }
+
+                case .updateSequence:
+                    guard let name = inquiry.sequenceName,
+                          let jsCode = inquiry.jsCode else {
+                        return CreateSequenceResponse(
+                            status: "error",
+                            error: "Missing required fields: sequenceName or jsCode"
+                        )
+                    }
+
+                    let result = updateSequence(name, inquiry.sequenceDescription, jsCode)
+
+                    if result.success {
+                        return CreateSequenceResponse(status: "updated", sequenceName: name)
                     } else {
                         return CreateSequenceResponse(status: "error", error: result.error)
                     }
@@ -355,5 +405,101 @@ enum CustomSequenceStorage {
         }
 
         return sequences
+    }
+
+    static func update(name: String, description: String?, jsCode: String) throws {
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: directoryURL.path) else {
+            throw StorageError.sequenceNotFound(name)
+        }
+
+        // Find the metadata file by name
+        let files = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+        let metadataFiles = files.filter { $0.pathExtension == "json" }
+
+        for metadataURL in metadataFiles {
+            let data = try Data(contentsOf: metadataURL)
+            let metadata = try JSONDecoder().decode(CustomSequenceMetadata.self, from: data)
+
+            if metadata.name == name {
+                // Update JS file
+                let jsFileURL = directoryURL.appendingPathComponent(metadata.jsFileName)
+                try jsCode.write(to: jsFileURL, atomically: true, encoding: .utf8)
+
+                // Update metadata if description changed
+                if let newDescription = description {
+                    let updatedMetadata = CustomSequenceMetadata(
+                        id: metadata.id,
+                        name: metadata.name,
+                        description: newDescription,
+                        jsFileName: metadata.jsFileName
+                    )
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = .prettyPrinted
+                    let metadataData = try encoder.encode(updatedMetadata)
+                    try metadataData.write(to: metadataURL)
+                }
+
+                return
+            }
+        }
+
+        throw StorageError.sequenceNotFound(name)
+    }
+
+    enum StorageError: Error, LocalizedError {
+        case sequenceNotFound(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .sequenceNotFound(let name):
+                return "Sequence '\(name)' not found. Only custom sequences can be updated."
+            }
+        }
+    }
+
+    // MARK: - Active Sequences Persistence
+
+    private static var activeSequencesFileURL: URL {
+        let baseURL: URL
+        #if os(Linux)
+        baseURL = URL(fileURLWithPath: NSHomeDirectory())
+        #else
+        baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory())
+        #endif
+        return baseURL.appendingPathComponent("Julelys/active_sequences.json")
+    }
+
+    static func saveActiveSequences(_ names: [String]) {
+        do {
+            try ensureDirectoryExists()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(names)
+            try data.write(to: activeSequencesFileURL)
+            fputs("💾 Saved active sequences: \(names.joined(separator: ", "))\n", stderr)
+        } catch {
+            fputs("⚠️ Failed to save active sequences: \(error)\n", stderr)
+        }
+    }
+
+    static func loadActiveSequences() -> [String] {
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: activeSequencesFileURL.path) else {
+            return []
+        }
+
+        do {
+            let data = try Data(contentsOf: activeSequencesFileURL)
+            let names = try JSONDecoder().decode([String].self, from: data)
+            fputs("📂 Loaded active sequences: \(names.joined(separator: ", "))\n", stderr)
+            return names
+        } catch {
+            fputs("⚠️ Failed to load active sequences: \(error)\n", stderr)
+            return []
+        }
     }
 }

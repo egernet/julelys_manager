@@ -8,6 +8,7 @@ public struct RequestCommand: Codable {
         case turnOn
         case turnOff
         case createSequence
+        case updateSequence
     }
 
     public let cmd: Command

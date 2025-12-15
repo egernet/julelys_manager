@@ -6,6 +6,7 @@ enum RegisteredTools: String {
     case allSequences
     case runSequences
     case createSequence
+    case updateSequence
 }
 
 @main
@@ -120,6 +121,35 @@ extension JulelysMCP {
                         "required": .array([.string("name"), .string("description"), .string("jsCode")]),
                     ])
                 ),
+                Tool(
+                    name: RegisteredTools.updateSequence.rawValue,
+                    description: """
+                        Update an existing custom LED sequence 🎄
+
+                        Only custom sequences (created via createSequence) can be updated.
+                        Built-in sequences cannot be modified.
+
+                        The same JavaScript API is available as in createSequence.
+                        """,
+                    inputSchema: .object([
+                        "type": .string("object"),
+                        "properties": .object([
+                            "name": .object([
+                                "type": .string("string"),
+                                "description": .string("Name of the sequence to update"),
+                            ]),
+                            "description": .object([
+                                "type": .string("string"),
+                                "description": .string("New description (optional, leave empty to keep existing)"),
+                            ]),
+                            "jsCode": .object([
+                                "type": .string("string"),
+                                "description": .string("New JavaScript code for the sequence"),
+                            ])
+                        ]),
+                        "required": .array([.string("name"), .string("jsCode")]),
+                    ])
+                ),
             ]
             return .init(tools: tools)
         }
@@ -186,6 +216,31 @@ extension JulelysMCP {
                 content: [.text(createSequenceHandler(name: name, description: description, jsCode: jsCode))],
                 isError: false
             )
+
+        case .updateSequence:
+            guard let nameValue = params.arguments?["name"],
+                  case .string(let name) = nameValue,
+                  let codeValue = params.arguments?["jsCode"],
+                  case .string(let jsCode) = codeValue
+            else {
+                return .init(
+                    content: [.text("❌ Missing required parameters: name or jsCode")],
+                    isError: true
+                )
+            }
+
+            // Description is optional for updates
+            var description: String? = nil
+            if let descValue = params.arguments?["description"],
+               case .string(let desc) = descValue,
+               !desc.isEmpty {
+                description = desc
+            }
+
+            return .init(
+                content: [.text(updateSequenceHandler(name: name, description: description, jsCode: jsCode))],
+                isError: false
+            )
         }
     }
     
@@ -234,6 +289,26 @@ extension JulelysMCP {
             return "✅ Sequence '\(response.sequenceName ?? name)' created successfully! Use runSequences to start it."
         } catch {
             return "❌ Error creating sequence: \(error.localizedDescription)"
+        }
+    }
+
+    private static func updateSequenceHandler(name: String, description: String?, jsCode: String) -> String {
+        do {
+            let request = RequestCommand(
+                cmd: .updateSequence,
+                sequenceName: name,
+                sequenceDescription: description,
+                jsCode: jsCode
+            )
+            let response: CreateSequenceResponse = try sendCommand(request, decodeTo: CreateSequenceResponse.self)
+
+            if let error = response.error {
+                return "❌ Failed to update sequence: \(error)"
+            }
+
+            return "✅ Sequence '\(response.sequenceName ?? name)' updated successfully!"
+        } catch {
+            return "❌ Error updating sequence: \(error.localizedDescription)"
         }
     }
 }
