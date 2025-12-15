@@ -5,16 +5,25 @@ final class JSSequence: SequenceType {
     var delegate: SequenceDelegate?
     let matrixHeight: Int
     let matrixWidth: Int
-    let jsFile: String
+    let jsFile: String?
     var stop = false
 
     private var ctx: JSContext?
     private var code: String?
+    private var directCode: String?
 
     init(matrixWidth: Int, matrixHeight: Int, jsFile: String) {
         self.matrixHeight = matrixHeight
         self.matrixWidth = matrixWidth
         self.jsFile = jsFile
+        self.directCode = nil
+    }
+
+    init(matrixWidth: Int, matrixHeight: Int, jsCode: String) {
+        self.matrixHeight = matrixHeight
+        self.matrixWidth = matrixWidth
+        self.jsFile = nil
+        self.directCode = jsCode
     }
 
     private func setPixelColor(point: Point, color: Color) {
@@ -26,9 +35,13 @@ final class JSSequence: SequenceType {
     }
 
     private func setupJS() {
-        guard let path = Bundle.module.path(forResource: "SequencesJS", ofType: nil) else { return }
-        let filePath = path + "/" + jsFile
-        code = try? String(contentsOfFile: filePath, encoding: .utf8)
+        if let directCode = directCode {
+            code = directCode
+        } else if let jsFile = jsFile,
+                  let path = Bundle.module.path(forResource: "SequencesJS", ofType: nil) {
+            let filePath = path + "/" + jsFile
+            code = try? String(contentsOfFile: filePath, encoding: .utf8)
+        }
 
         let context = JSContext()
         self.ctx = context

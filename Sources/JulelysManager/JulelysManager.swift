@@ -40,8 +40,8 @@ struct JulelysManager: ParsableCommand {
     var matrixHeight: Int = 55
     
     func run() {
-        
-        let sequences = loadAllSequence()
+
+        var sequences = loadAllSequence()
         var activeSequences = [SequenceData]()
 
         print("\u{1B}[2J")
@@ -60,28 +60,66 @@ struct JulelysManager: ParsableCommand {
             )
         case .app:
             controller = WindowController(
-                sequences: [JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "skyblue.js")],
+//                sequences: [JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "skyblue.js")],
+                sequences: activeSequences.map { $0.sequence },
                 matrixWidth: matrixWidth,
                 matrixHeight: matrixHeight
             )
         case .console:
-            return
-        //controller = ConsoleController(sequences: sequences, matrixWidth: matrixWidth, matrixHeight: matrixHeight)
+            controller = ConsoleController(
+                sequences: activeSequences.map { $0.sequence },
+                matrixWidth: matrixWidth,
+                matrixHeight: matrixHeight
+            )
         }
-        
+
+        let width = matrixWidth
+        let height = matrixHeight
+
         Task {
-            await startDaemon(allSequences: {
-                sequences.map({ $0.info })
-            }, runSequences: { names in
-                activeSequences = sequences.filter { names.contains($0.info.name) }
-                controller.update(activeSequences.map { $0.sequence })
-            })
+            await startDaemon(
+                allSequences: {
+                    sequences.map({ $0.info })
+                },
+                runSequences: { names in
+                    activeSequences = sequences.filter { names.contains($0.info.name) }
+                    controller.update(activeSequences.map { $0.sequence })
+                },
+                createSequence: { name, description, jsCode in
+                    // Check if sequence already exists
+                    if sequences.contains(where: { $0.info.name == name }) {
+                        return (false, "Sequence with name '\(name)' already exists")
+                    }
+
+                    // Save to disk
+                    do {
+                        let id = try CustomSequenceStorage.save(name: name, description: description, jsCode: jsCode)
+
+                        let newSequence = SequenceData(
+                            id: id,
+                            name: name,
+                            description: description,
+                            sequence: JSSequence(matrixWidth: width, matrixHeight: height, jsCode: jsCode)
+                        )
+                        sequences.append(newSequence)
+
+                        fputs("💾 Saved new sequence '\(name)' to disk\n", stderr)
+                        return (true, nil)
+                    } catch {
+                        return (false, "Failed to save sequence: \(error.localizedDescription)")
+                    }
+                }
+            )
         }
-        
+
         controller.start()
     }
     
-    func startDaemon(allSequences: @escaping () -> [SequenceInfo], runSequences: @escaping ([String]) -> Void = { _ in }) async {
+    func startDaemon(
+        allSequences: @escaping () -> [SequenceInfo],
+        runSequences: @escaping ([String]) -> Void = { _ in },
+        createSequence: @escaping (String, String, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") }
+    ) async {
         do {
             try await JulelysDaemon.start { inquiry in
                 switch inquiry.cmd {
@@ -105,10 +143,28 @@ struct JulelysManager: ParsableCommand {
                     guard let names = inquiry.names else {
                         return RunSequencesResponse(status: "not running")
                     }
-                    
+
                     runSequences(names)
-                    
+
                     return RunSequencesResponse(status: "running")
+
+                case .createSequence:
+                    guard let name = inquiry.sequenceName,
+                          let description = inquiry.sequenceDescription,
+                          let jsCode = inquiry.jsCode else {
+                        return CreateSequenceResponse(
+                            status: "error",
+                            error: "Missing required fields: sequenceName, sequenceDescription, or jsCode"
+                        )
+                    }
+
+                    let result = createSequence(name, description, jsCode)
+
+                    if result.success {
+                        return CreateSequenceResponse(status: "created", sequenceName: name)
+                    } else {
+                        return CreateSequenceResponse(status: "error", error: result.error)
+                    }
                 }
             }
         } catch {
@@ -117,7 +173,8 @@ struct JulelysManager: ParsableCommand {
     }
     
     func loadAllSequence() -> [SequenceData] {
-        let sequences: [SequenceData] = [
+        // Built-in sequences
+        var sequences: [SequenceData] = [
             .init(
                 id: "Twist",
                 name: "Twist",
@@ -176,16 +233,22 @@ struct JulelysManager: ParsableCommand {
                 id: "TheMatrixColors",
                 name: "The Matrix with 4 colors",
                 description: "The Matrix with green, red, white and yellow colors",
-                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green, .green, .red, .green, .green, .trueWhite, .yallow], numberOfmatrixs: 200),
+                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green, .green, .red, .green, .green, .trueWhite, .yallow], numberOfmatrixs: 200)
             ),
             .init(
                 id: "Dannebrog",
                 name: "Dannebrog",
                 description: "The Matrix with Dannebrog colors",
-                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.red, .red, .red, .red, .trueWhite], numberOfmatrixs: 200),
+                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.red, .red, .red, .red, .trueWhite], numberOfmatrixs: 200)
             )
         ]
-        
+
+        // Load custom sequences from disk
+        let customSequences = CustomSequenceStorage.loadAll(matrixWidth: matrixWidth, matrixHeight: matrixHeight)
+        sequences.append(contentsOf: customSequences)
+
+        fputs("🎄 Loaded \(sequences.count) sequences (\(customSequences.count) custom)\n", stderr)
+
         return sequences
     }
 }
@@ -193,9 +256,104 @@ struct JulelysManager: ParsableCommand {
 struct SequenceData {
     let info: SequenceInfo
     let sequence: SequenceType
-    
+
     init(id: String, name: String, description: String, sequence: SequenceType) {
         self.info = .init(id: id, name: name, description: description)
         self.sequence = sequence
+    }
+}
+
+struct CustomSequenceMetadata: Codable {
+    let id: String
+    let name: String
+    let description: String
+    let jsFileName: String
+}
+
+enum CustomSequenceStorage {
+    static var directoryURL: URL {
+        let baseURL: URL
+        #if os(Linux)
+        baseURL = URL(fileURLWithPath: NSHomeDirectory())
+        #else
+        baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory())
+        #endif
+        return baseURL.appendingPathComponent("Julelys/CustomSequences")
+    }
+
+    static func ensureDirectoryExists() throws {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: directoryURL.path) {
+            try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        }
+    }
+
+    static func save(name: String, description: String, jsCode: String) throws -> String {
+        try ensureDirectoryExists()
+
+        let id = name.lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+        let jsFileName = "\(id).js"
+
+        let jsFileURL = directoryURL.appendingPathComponent(jsFileName)
+        let metadataURL = directoryURL.appendingPathComponent("\(id).json")
+
+        try jsCode.write(to: jsFileURL, atomically: true, encoding: .utf8)
+
+        let metadata = CustomSequenceMetadata(
+            id: id,
+            name: name,
+            description: description,
+            jsFileName: jsFileName
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let metadataData = try encoder.encode(metadata)
+        try metadataData.write(to: metadataURL)
+
+        return id
+    }
+
+    static func loadAll(matrixWidth: Int, matrixHeight: Int) -> [SequenceData] {
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: directoryURL.path) else {
+            return []
+        }
+
+        var sequences: [SequenceData] = []
+
+        do {
+            let files = try fm.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+            let metadataFiles = files.filter { $0.pathExtension == "json" }
+
+            for metadataURL in metadataFiles {
+                do {
+                    let data = try Data(contentsOf: metadataURL)
+                    let metadata = try JSONDecoder().decode(CustomSequenceMetadata.self, from: data)
+
+                    let jsFileURL = directoryURL.appendingPathComponent(metadata.jsFileName)
+                    let jsCode = try String(contentsOf: jsFileURL, encoding: .utf8)
+
+                    let sequence = SequenceData(
+                        id: metadata.id,
+                        name: metadata.name,
+                        description: metadata.description,
+                        sequence: JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsCode: jsCode)
+                    )
+                    sequences.append(sequence)
+
+                    fputs("📂 Loaded custom sequence: \(metadata.name)\n", stderr)
+                } catch {
+                    fputs("⚠️ Failed to load sequence from \(metadataURL.lastPathComponent): \(error)\n", stderr)
+                }
+            }
+        } catch {
+            fputs("⚠️ Failed to read custom sequences directory: \(error)\n", stderr)
+        }
+
+        return sequences
     }
 }

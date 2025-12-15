@@ -1,11 +1,11 @@
 import Entities
 import Foundation
 import MCP
-import SwiftyJsonSchema
 
 enum RegisteredTools: String {
     case allSequences
     case runSequences
+    case createSequence
 }
 
 @main
@@ -66,6 +66,60 @@ extension JulelysMCP {
                         "required": .array([.string("names")]),
                     ])
                 ),
+                Tool(
+                    name: RegisteredTools.createSequence.rawValue,
+                    description: """
+                        Create a new LED sequence using JavaScript 🎄
+
+                        Available JavaScript API:
+                        - setPixelColor(r, g, b, w, x, y) - Set pixel color (RGBW 0-255)
+                        - updatePixels() - Send the frame to the LEDs (call after setting pixels)
+                        - delay(ms) - Wait for milliseconds
+                        - matrix.width - Number of strings/columns (default 8)
+                        - matrix.height - Number of LEDs per string/rows (default 55)
+
+                        Coordinate system:
+                        - x = row position (0 to matrix.height-1, vertical along string)
+                        - y = column/string number (0 to matrix.width-1, horizontal)
+
+                        Example template:
+                        ```javascript
+                        // Loop forever or for a number of iterations
+                        for (let frame = 0; frame < 100; frame++) {
+                            // Set each pixel
+                            for (let y = 0; y < matrix.width; y++) {       // Each string (column)
+                                for (let x = 0; x < matrix.height; x++) {  // Each LED in string (row)
+                                    let r = 255;  // Red 0-255
+                                    let g = 0;    // Green 0-255
+                                    let b = 0;    // Blue 0-255
+                                    let w = 0;    // White 0-255
+                                    setPixelColor(r, g, b, w, x, y);
+                                }
+                            }
+                            updatePixels();  // Send frame to LEDs
+                            delay(33);       // ~30 FPS
+                        }
+                        ```
+                        """,
+                    inputSchema: .object([
+                        "type": .string("object"),
+                        "properties": .object([
+                            "name": .object([
+                                "type": .string("string"),
+                                "description": .string("Name of the sequence (used to run it later)"),
+                            ]),
+                            "description": .object([
+                                "type": .string("string"),
+                                "description": .string("Description of what the sequence does"),
+                            ]),
+                            "jsCode": .object([
+                                "type": .string("string"),
+                                "description": .string("JavaScript code for the sequence"),
+                            ])
+                        ]),
+                        "required": .array([.string("name"), .string("description"), .string("jsCode")]),
+                    ])
+                ),
             ]
             return .init(tools: tools)
         }
@@ -108,9 +162,28 @@ extension JulelysMCP {
                 if case .string(let name) = value { return name }
                 return nil
             }
-            
+
             return .init(
                 content: [.text(runSequencesHandler(names))],
+                isError: false
+            )
+
+        case .createSequence:
+            guard let nameValue = params.arguments?["name"],
+                  case .string(let name) = nameValue,
+                  let descValue = params.arguments?["description"],
+                  case .string(let description) = descValue,
+                  let codeValue = params.arguments?["jsCode"],
+                  case .string(let jsCode) = codeValue
+            else {
+                return .init(
+                    content: [.text("❌ Missing required parameters: name, description, or jsCode")],
+                    isError: true
+                )
+            }
+
+            return .init(
+                content: [.text(createSequenceHandler(name: name, description: description, jsCode: jsCode))],
                 isError: false
             )
         }
@@ -141,6 +214,26 @@ extension JulelysMCP {
             return "🎄 Available sequences:\n\(list)"
         } catch {
             return "❌ \(error)"
+        }
+    }
+
+    private static func createSequenceHandler(name: String, description: String, jsCode: String) -> String {
+        do {
+            let request = RequestCommand(
+                cmd: .createSequence,
+                sequenceName: name,
+                sequenceDescription: description,
+                jsCode: jsCode
+            )
+            let response: CreateSequenceResponse = try sendCommand(request, decodeTo: CreateSequenceResponse.self)
+
+            if let error = response.error {
+                return "❌ Failed to create sequence: \(error)"
+            }
+
+            return "✅ Sequence '\(response.sequenceName ?? name)' created successfully! Use runSequences to start it."
+        } catch {
+            return "❌ Error creating sequence: \(error.localizedDescription)"
         }
     }
 }

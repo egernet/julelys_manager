@@ -7,13 +7,20 @@ public struct RequestCommand: Codable {
         case runSequences
         case turnOn
         case turnOff
+        case createSequence
     }
 
     public let cmd: Command
     public let names: [String]?
-    
-    public init(cmd: Command, names: [String]? = nil) {
+    public let sequenceName: String?
+    public let sequenceDescription: String?
+    public let jsCode: String?
+
+    public init(cmd: Command, names: [String]? = nil, sequenceName: String? = nil, sequenceDescription: String? = nil, jsCode: String? = nil) {
         self.cmd = cmd
         self.names = names
+        self.sequenceName = sequenceName
+        self.sequenceDescription = sequenceDescription
+        self.jsCode = jsCode
     }
 }
