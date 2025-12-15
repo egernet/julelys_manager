@@ -123,7 +123,7 @@ struct JulelysManager: ParsableCommand {
                     do {
                         try CustomSequenceStorage.update(name: name, description: description, jsCode: jsCode)
 
-                        // Update in-memory sequence
+                        // Update in-memory sequence list
                         if let index = sequences.firstIndex(where: { $0.info.name == name }) {
                             let oldInfo = sequences[index].info
                             let newSequence = SequenceData(
@@ -133,6 +133,14 @@ struct JulelysManager: ParsableCommand {
                                 sequence: JSSequence(matrixWidth: width, matrixHeight: height, jsCode: jsCode)
                             )
                             sequences[index] = newSequence
+
+                            // Update active sequences if this sequence is active
+                            if let activeIndex = activeSequences.firstIndex(where: { $0.info.name == name }) {
+                                activeSequences[activeIndex] = newSequence
+                                // Refresh the controller with updated sequences
+                                controller.update(activeSequences.map { $0.sequence })
+                                fputs("🔄 Refreshed active sequence '\(name)'\n", stderr)
+                            }
                         }
 
                         fputs("✏️ Updated sequence '\(name)'\n", stderr)
