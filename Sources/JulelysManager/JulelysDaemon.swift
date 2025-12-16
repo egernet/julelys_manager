@@ -9,7 +9,11 @@ struct JulelysDaemon {
 
         unlink(socketPath)
 
+        #if os(Linux)
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { throw SockErr.posix("socket(): \(errno)") }
 
         // Optional: make sure the socket file is world-readable/writable if you want

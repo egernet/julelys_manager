@@ -435,7 +435,11 @@ extension JulelysMCP {
         decodeTo type: T.Type
     ) throws -> T {
         // 1️⃣ Opret UNIX-socket
+        #if os(Linux)
+        let sock = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let sock = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard sock >= 0 else {
             throw SocketError.operationFailed("socket() failed: \(errno)")
         }
