@@ -1,6 +1,6 @@
 # 🎄 Julelys Manager
 
-`julelys_manager` is a Swift-based **command-line tool** for controlling a programmable LED matrix over **SPI**. It supports multiple execution modes and can be controlled via **MCP (Model Context Protocol)** for AI integration.
+A Swift-based **command-line tool** for controlling a programmable LED matrix over **SPI**. It supports multiple execution modes and can be controlled via **MCP (Model Context Protocol)** for AI integration.
 
 ---
 
@@ -11,7 +11,7 @@
 - 📝 **Custom JavaScript sequences**: Create and edit LED animations with JavaScript
 - 💾 **Persistence**: Active sequences are saved and restored on restart
 - 🌈 **Built-in sequences**: 12 pre-made animations (Rainbow, Stars, Fireworks, Matrix, etc.)
-- 🌐 **Remote control**: Control your Pi from your Mac via SSH tunnel
+- 🌐 **Remote control**: Control your Pi from your Mac via SSH
 
 ---
 
@@ -90,7 +90,7 @@ If JulelysManager and Claude Desktop run on the **same machine**:
 
 ### 🌐 Remote Setup (Mac → Raspberry Pi)
 
-Hvis JulelysManager og JulelysMCP begge kører på **Raspberry Pi**, og Claude Desktop er på din **Mac**, kan Claude bare SSH'e til Pi'en.
+If both JulelysManager and JulelysMCP run on a **Raspberry Pi**, and Claude Desktop is on your **Mac**, Claude can simply SSH into the Pi.
 
 #### 📐 Architecture
 
@@ -139,32 +139,32 @@ swift build -c release
 .build/release/JulelysManager --mode real
 ```
 
-Du ser:
+You should see:
 ```
-🎄 julelys_manage daemon lytter på /tmp/julelys.sock
+🎄 julelys_manager daemon listening on /tmp/julelys.sock
 🎄 Loaded 12 sequences (0 custom)
 ```
 
-> 💡 **Tip**: Brug `screen` eller `tmux` så daemon fortsætter efter du logger ud:
+> 💡 **Tip**: Use `screen` or `tmux` so the daemon keeps running after you log out:
 > ```bash
 > screen -S julelys
 > .build/release/JulelysManager --mode real
-> # Tryk Ctrl+A, D for at detach
+> # Press Ctrl+A, D to detach
 > ```
 
-**2️⃣ On Mac - Setup SSH key (hvis ikke allerede gjort)**
+**2️⃣ On Mac - Setup SSH key (if not already done)**
 
 ```bash
-# Generér SSH key hvis du ikke har en
+# Generate SSH key if you don't have one
 ssh-keygen -t ed25519
 
-# Kopiér til Pi (så du ikke skal skrive password)
+# Copy to Pi (so you don't need to enter password)
 ssh-copy-id pi@raspberrypi.local
 ```
 
 **3️⃣ On Mac - Configure Claude Desktop**
 
-Åbn `~/Library/Application Support/Claude/claude_desktop_config.json` og tilføj:
+Open `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
 
 ```json
 {
@@ -181,28 +181,28 @@ ssh-copy-id pi@raspberrypi.local
 }
 ```
 
-> 📝 **Vigtigt**: Ret stien `/home/pi/julelys_manager/...` til hvor du byggede projektet på Pi'en.
+> 📝 **Important**: Update the path `/home/pi/julelys_manager/...` to match where you built the project on your Pi.
 
 **4️⃣ Restart Claude Desktop**
 
-Genstart Claude Desktop og du kan nu styre dine julelys! 🎄
+Restart Claude Desktop and you can now control your Christmas lights! 🎄
 
-#### 🧪 Test forbindelsen
+#### 🧪 Test the connection
 
-Fra din Mac:
+From your Mac:
 
 ```bash
-# Test at SSH virker
+# Test that SSH works
 ssh pi@raspberrypi.local "echo 'Connected!'"
 
-# Test at JulelysMCP kan køre
+# Test that JulelysMCP can run
 ssh pi@raspberrypi.local "/home/pi/julelys_manager/.build/release/JulelysMCP" &
-# (Tryk Ctrl+C efter et par sekunder)
+# (Press Ctrl+C after a few seconds)
 ```
 
-#### 🔄 Auto-start daemon på Pi (systemd)
+#### 🔄 Auto-start daemon on Pi (systemd)
 
-Opret `/etc/systemd/system/julelys.service` på Pi'en:
+Create `/etc/systemd/system/julelys.service` on the Pi:
 
 ```ini
 [Unit]
@@ -221,7 +221,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Aktivér:
+Enable it:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable julelys
@@ -231,7 +231,7 @@ sudo systemctl start julelys
 sudo systemctl status julelys
 ```
 
-Nu starter daemon automatisk når Pi'en booter! 🚀
+Now the daemon starts automatically when the Pi boots! 🚀
 
 ---
 
