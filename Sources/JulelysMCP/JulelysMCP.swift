@@ -9,6 +9,7 @@ enum RegisteredTools: String {
     case updateSequence
     case getStatus
     case getSequenceCode
+    case previewSequence
 }
 
 @main
@@ -189,6 +190,43 @@ extension JulelysMCP {
                         "required": .array([.string("name")]),
                     ])
                 ),
+                Tool(
+                    name: RegisteredTools.previewSequence.rawValue,
+                    description: """
+                        Generate a GIF preview of a JavaScript sequence 🎬
+
+                        Creates an animated GIF showing how the sequence looks on the LED matrix.
+                        This allows you to test and preview sequences before activating them on real LEDs.
+
+                        Requirements:
+                        - Only JavaScript sequences can be previewed (custom or built-in JS)
+                        - ImageMagick or ffmpeg must be installed on the system
+                        - Install with: brew install imagemagick (macOS) or apt install imagemagick (Linux)
+
+                        Returns:
+                        - gifPath: Path to the generated GIF file
+                        - gifBase64: Base64 encoded GIF data (for direct display)
+                        - frameCount: Number of frames captured
+                        """,
+                    inputSchema: .object([
+                        "type": .string("object"),
+                        "properties": .object([
+                            "name": .object([
+                                "type": .string("string"),
+                                "description": .string("Name of the sequence to preview"),
+                            ]),
+                            "maxFrames": .object([
+                                "type": .string("integer"),
+                                "description": .string("Maximum number of frames to capture (default: 60)"),
+                            ]),
+                            "frameDelay": .object([
+                                "type": .string("integer"),
+                                "description": .string("Delay between frames in milliseconds (default: 33 = ~30fps)"),
+                            ])
+                        ]),
+                        "required": .array([.string("name")]),
+                    ])
+                ),
             ]
             return .init(tools: tools)
         }
@@ -299,6 +337,33 @@ extension JulelysMCP {
 
             return .init(
                 content: [.text(getSequenceCodeHandler(name: name))],
+                isError: false
+            )
+
+        case .previewSequence:
+            guard let nameValue = params.arguments?["name"],
+                  case .string(let name) = nameValue
+            else {
+                return .init(
+                    content: [.text("❌ Missing required parameter: name")],
+                    isError: true
+                )
+            }
+
+            var maxFrames = 60
+            if let maxFramesValue = params.arguments?["maxFrames"],
+               case .int(let frames) = maxFramesValue {
+                maxFrames = frames
+            }
+
+            var frameDelay = 33  // ~30 fps
+            if let frameDelayValue = params.arguments?["frameDelay"],
+               case .int(let delay) = frameDelayValue {
+                frameDelay = delay
+            }
+
+            return .init(
+                content: [.text(previewSequenceHandler(name: name, maxFrames: maxFrames, frameDelay: frameDelay))],
                 isError: false
             )
         }
@@ -422,6 +487,46 @@ extension JulelysMCP {
             return "❌ Error getting sequence code: \(error.localizedDescription)"
         }
     }
+
+    private static func previewSequenceHandler(name: String, maxFrames: Int, frameDelay: Int) -> String {
+        do {
+            let request = RequestCommand(
+                cmd: .previewSequence,
+                sequenceName: name,
+                maxFrames: maxFrames,
+                frameDelay: frameDelay
+            )
+            let response: PreviewResponse = try sendCommand(request, decodeTo: PreviewResponse.self)
+
+            if let error = response.error {
+                return "❌ \(error)"
+            }
+
+            if response.success {
+                var result = """
+                    🎬 Preview Generated for '\(response.sequenceName)'
+
+                    📊 Frames captured: \(response.frameCount)
+                    """
+
+                if let gifPath = response.gifPath {
+                    result += "\n📁 GIF saved to: \(gifPath)"
+                }
+
+                if let base64 = response.gifBase64 {
+                    // Return the base64 data for clients that can display it
+                    result += "\n\n📎 GIF Data (base64): data:image/gif;base64,\(base64.prefix(100))..."
+                    result += "\n\n💡 Tip: Copy the full gifBase64 value and paste into a browser or use a base64 decoder to view the animation."
+                }
+
+                return result
+            } else {
+                return "❌ Preview failed: \(response.error ?? "Unknown error")"
+            }
+        } catch {
+            return "❌ Error generating preview: \(error.localizedDescription)"
+        }
+    }
 }
 
 extension JulelysMCP {
@@ -475,24 +580,31 @@ extension JulelysMCP {
             _ = write(sock, ptr.baseAddress, ptr.count)
         }
 
-        // 4️⃣ Læs svar
-        var buffer = [UInt8](repeating: 0, count: 8192)
-        let bytesRead = read(sock, &buffer, buffer.count)
+        // 4️⃣ Læs svar - læs alt data indtil socket lukkes
+        var responseData = Data()
+        var buffer = [UInt8](repeating: 0, count: 65536) // 64KB buffer
+
+        while true {
+            let bytesRead = read(sock, &buffer, buffer.count)
+            if bytesRead <= 0 {
+                break
+            }
+            responseData.append(contentsOf: buffer[0..<bytesRead])
+        }
         close(sock)
 
-        guard bytesRead > 0 else {
+        guard !responseData.isEmpty else {
             throw SocketError.operationFailed("no data received")
         }
 
         // 5️⃣ Decode svar til model
         do {
-            let responseData = Data(buffer[0..<bytesRead])
             let decoded = try JSONDecoder().decode(T.self, from: responseData)
             return decoded
         } catch {
-            let raw = String(decoding: buffer[0..<bytesRead], as: UTF8.self)
+            let raw = String(decoding: responseData.prefix(500), as: UTF8.self)
             throw SocketError.decodeFailed(
-                "decode error: \(error.localizedDescription)\nResponse: \(raw)"
+                "decode error: \(error.localizedDescription)\nResponse (first 500 chars): \(raw)"
             )
         }
     }

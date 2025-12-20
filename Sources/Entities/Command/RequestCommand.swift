@@ -10,6 +10,7 @@ public struct RequestCommand: Codable {
         case createSequence
         case updateSequence
         case getSequenceCode
+        case previewSequence
     }
 
     public let cmd: Command
@@ -17,12 +18,24 @@ public struct RequestCommand: Codable {
     public let sequenceName: String?
     public let sequenceDescription: String?
     public let jsCode: String?
+    public let maxFrames: Int?
+    public let frameDelay: Int?
 
-    public init(cmd: Command, names: [String]? = nil, sequenceName: String? = nil, sequenceDescription: String? = nil, jsCode: String? = nil) {
+    public init(
+        cmd: Command,
+        names: [String]? = nil,
+        sequenceName: String? = nil,
+        sequenceDescription: String? = nil,
+        jsCode: String? = nil,
+        maxFrames: Int? = nil,
+        frameDelay: Int? = nil
+    ) {
         self.cmd = cmd
         self.names = names
         self.sequenceName = sequenceName
         self.sequenceDescription = sequenceDescription
         self.jsCode = jsCode
+        self.maxFrames = maxFrames
+        self.frameDelay = frameDelay
     }
 }

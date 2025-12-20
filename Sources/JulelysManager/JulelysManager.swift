@@ -40,6 +40,8 @@ struct JulelysManager: ParsableCommand {
     var matrixHeight: Int = 55
     
     func run() {
+        // Ignore SIGPIPE to prevent crashes when clients disconnect
+        signal(SIGPIPE, SIG_IGN)
 
         var sequences = loadAllSequence()
 
@@ -158,6 +160,73 @@ struct JulelysManager: ParsableCommand {
                         matrixHeight: height,
                         mode: executesMode.rawValue
                     )
+                },
+                previewSequence: { name, maxFrames, frameDelay in
+                    // Find the sequence by name
+                    guard let sequenceData = sequences.first(where: { $0.info.name == name }) else {
+                        return PreviewResponse.failure(
+                            sequenceName: name,
+                            error: "Sequence '\(name)' not found"
+                        )
+                    }
+
+                    // Create a fresh sequence instance for preview (to avoid affecting active sequences)
+                    let previewSeq: SequenceType
+                    if let codeData = CustomSequenceStorage.getCode(name: name) {
+                        previewSeq = JSSequence(matrixWidth: width, matrixHeight: height, jsCode: codeData.jsCode)
+                    } else if let jsSeq = sequenceData.sequence as? JSSequence, let jsFile = jsSeq.jsFile {
+                        previewSeq = JSSequence(matrixWidth: width, matrixHeight: height, jsFile: jsFile)
+                    } else {
+                        return PreviewResponse.failure(
+                            sequenceName: name,
+                            error: "Only JavaScript sequences can be previewed"
+                        )
+                    }
+
+                    let previewController = PreviewController(
+                        matrixWidth: width,
+                        matrixHeight: height,
+                        maxFrames: maxFrames,
+                        frameDelay: frameDelay
+                    )
+
+                    // Generate output path
+                    let outputDir = CustomSequenceStorage.directoryURL.deletingLastPathComponent().appendingPathComponent("Previews")
+                    let outputPath = outputDir.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "_")).gif").path
+
+                    fputs("🎬 Generating preview for '\(name)' (\(maxFrames) frames)...\n", stderr)
+
+                    let result = previewController.captureSequence(previewSeq, outputPath: outputPath)
+
+                    switch result {
+                    case .success(let path):
+                        // Read the GIF and convert to base64
+                        if let gifData = FileManager.default.contents(atPath: path) {
+                            let base64 = gifData.base64EncodedString()
+                            fputs("✅ Preview generated: \(path)\n", stderr)
+                            return PreviewResponse(
+                                success: true,
+                                sequenceName: name,
+                                gifPath: path,
+                                gifBase64: base64,
+                                frameCount: maxFrames
+                            )
+                        } else {
+                            return PreviewResponse(
+                                success: true,
+                                sequenceName: name,
+                                gifPath: path,
+                                frameCount: maxFrames
+                            )
+                        }
+
+                    case .failure(let error):
+                        fputs("❌ Preview failed: \(error.localizedDescription)\n", stderr)
+                        return PreviewResponse.failure(
+                            sequenceName: name,
+                            error: error.localizedDescription
+                        )
+                    }
                 }
             )
         }
@@ -170,7 +239,8 @@ struct JulelysManager: ParsableCommand {
         runSequences: @escaping ([String]) -> Void = { _ in },
         createSequence: @escaping (String, String, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
         updateSequence: @escaping (String, String?, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
-        getStatus: @escaping () -> StatusResponse
+        getStatus: @escaping () -> StatusResponse,
+        previewSequence: @escaping (String, Int, Int) -> PreviewResponse = { name, _, _ in PreviewResponse.failure(sequenceName: name, error: "Not supported") }
     ) async {
         do {
             try await JulelysDaemon.start { inquiry in
@@ -268,6 +338,19 @@ struct JulelysManager: ParsableCommand {
                     }
 
                     return SequenceCodeResponse.notFound(name)
+
+                case .previewSequence:
+                    guard let name = inquiry.sequenceName else {
+                        return PreviewResponse.failure(
+                            sequenceName: "",
+                            error: "Missing required field: sequenceName"
+                        )
+                    }
+
+                    let maxFrames = inquiry.maxFrames ?? 60
+                    let frameDelay = inquiry.frameDelay ?? 100
+
+                    return previewSequence(name, maxFrames, frameDelay)
                 }
             }
         } catch {
