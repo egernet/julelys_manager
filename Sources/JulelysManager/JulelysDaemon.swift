@@ -39,10 +39,11 @@ struct JulelysDaemon {
         // Using full struct size is also acceptable on Linux.
         let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
 
-        let bindResult: Int32 = withUnsafeBytes(of: &addr) { raw in
+        let bindResult = withUnsafeBytes(of: &addr) { raw in
             let sa = raw.baseAddress!.assumingMemoryBound(to: sockaddr.self)
             return bind(fd, sa, addrLen)
         }
+        guard bindResult == 0 else { throw SockErr.posix("bind(): \(errno)") }
 
         listen(fd, 10)
         fputs("🎄 julelys_manage daemon lytter på \(socketPath)\n", stderr)

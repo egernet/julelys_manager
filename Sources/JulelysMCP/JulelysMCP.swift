@@ -232,6 +232,7 @@ extension JulelysMCP {
         }
     }
 
+    @Sendable
     private static func toolsHandler(params: CallTool.Parameters) async throws
         -> CallTool.Result
     {
