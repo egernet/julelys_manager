@@ -192,35 +192,27 @@ struct JulelysManager: ParsableCommand {
                         frameDelay: frameDelay
                     )
 
-                    // Generate output path
-                    let outputDir = CustomSequenceStorage.directoryURL.deletingLastPathComponent().appendingPathComponent("Previews")
-                    let outputPath = outputDir.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "_")).gif").path
+                    fputs("🎬 Generating HTML preview for '\(name)' (\(maxFrames) frames)...\n", stderr)
 
-                    fputs("🎬 Generating preview for '\(name)' (\(maxFrames) frames)...\n", stderr)
-
-                    let result = previewController.captureSequence(previewSeq, outputPath: outputPath)
+                    // Use HTML preview (no ImageMagick required)
+                    let result = previewController.captureSequenceAsHTML(previewSeq)
 
                     switch result {
-                    case .success(let path):
-                        // Read the GIF and convert to base64
-                        if let gifData = FileManager.default.contents(atPath: path) {
-                            let base64 = gifData.base64EncodedString()
-                            fputs("✅ Preview generated: \(path)\n", stderr)
-                            return PreviewResponse(
-                                success: true,
-                                sequenceName: name,
-                                gifPath: path,
-                                gifBase64: base64,
-                                frameCount: maxFrames
-                            )
-                        } else {
-                            return PreviewResponse(
-                                success: true,
-                                sequenceName: name,
-                                gifPath: path,
-                                frameCount: maxFrames
-                            )
-                        }
+                    case .success(let htmlContent):
+                        // Optionally save to file for convenience
+                        let outputDir = CustomSequenceStorage.directoryURL.deletingLastPathComponent().appendingPathComponent("Previews")
+                        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                        let outputPath = outputDir.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "_")).html").path
+                        try? htmlContent.write(toFile: outputPath, atomically: true, encoding: .utf8)
+
+                        fputs("✅ HTML preview generated: \(outputPath)\n", stderr)
+                        return PreviewResponse(
+                            success: true,
+                            sequenceName: name,
+                            gifPath: outputPath,
+                            htmlContent: htmlContent,
+                            frameCount: maxFrames
+                        )
 
                     case .failure(let error):
                         fputs("❌ Preview failed: \(error.localizedDescription)\n", stderr)

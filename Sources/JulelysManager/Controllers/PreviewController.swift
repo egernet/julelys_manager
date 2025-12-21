@@ -41,6 +41,238 @@ class PreviewController: SequenceDelegate {
         return generateGIF(outputPath: outputPath)
     }
 
+    /// Run a sequence and capture frames, returns HTML content with embedded JS animation
+    func captureSequenceAsHTML(_ sequence: SequenceType) -> Result<String, PreviewError> {
+        var seq = sequence
+        seq.delegate = self
+        capturedFrames = []
+        frameCount = 0
+        shouldStop = false
+
+        // Run sequence in a limited way - it will stop when maxFrames is reached
+        seq.runSequence()
+
+        if capturedFrames.isEmpty {
+            return .failure(.noFramesCaptured)
+        }
+
+        // Generate HTML with embedded JavaScript animation
+        return .success(generateHTML(sequenceName: seq.name))
+    }
+
+    private func generateHTML(sequenceName: String) -> String {
+        // Convert frames to JSON array of color data
+        // Each frame is [row][col] = {r, g, b, w}
+        var framesJSON = "["
+        for (frameIndex, frame) in capturedFrames.enumerated() {
+            if frameIndex > 0 { framesJSON += "," }
+            framesJSON += "["
+            for (rowIndex, row) in frame.enumerated() {
+                if rowIndex > 0 { framesJSON += "," }
+                framesJSON += "["
+                for (colIndex, color) in row.enumerated() {
+                    if colIndex > 0 { framesJSON += "," }
+                    // Combine RGBW to RGB for display
+                    let r = min(255, Int(color.red) + Int(color.white) / 2)
+                    let g = min(255, Int(color.green) + Int(color.white) / 2)
+                    let b = min(255, Int(color.blue) + Int(color.white) / 2)
+                    framesJSON += "[\(r),\(g),\(b)]"
+                }
+                framesJSON += "]"
+            }
+            framesJSON += "]"
+        }
+        framesJSON += "]"
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Preview: \(sequenceName)</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    background: #111;
+                    color: #fff;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    padding: 20px;
+                }
+                h1 { margin-bottom: 10px; font-size: 1.5em; }
+                .info { color: #888; margin-bottom: 20px; font-size: 0.9em; }
+                canvas {
+                    border-radius: 8px;
+                    box-shadow: 0 0 30px rgba(255,255,255,0.1);
+                }
+                .controls {
+                    margin-top: 20px;
+                    display: flex;
+                    gap: 10px;
+                    align-items: center;
+                }
+                button {
+                    background: #333;
+                    color: #fff;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                }
+                button:hover { background: #444; }
+                button.active { background: #0a0; }
+                .speed-control {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                input[type="range"] {
+                    width: 100px;
+                }
+                .frame-info {
+                    color: #888;
+                    font-size: 0.85em;
+                    min-width: 120px;
+                    text-align: center;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>\(sequenceName)</h1>
+            <div class="info">\(matrixWidth) x \(matrixHeight) LED matrix • \(capturedFrames.count) frames</div>
+            <canvas id="led"></canvas>
+            <div class="controls">
+                <button id="playPause" class="active">⏸ Pause</button>
+                <button id="stepBack">⏮ Step</button>
+                <button id="stepForward">Step ⏭</button>
+                <div class="speed-control">
+                    <span>Speed:</span>
+                    <input type="range" id="speed" min="1" max="100" value="30">
+                    <span id="fps">30 fps</span>
+                </div>
+                <div class="frame-info" id="frameInfo">Frame 1 / \(capturedFrames.count)</div>
+            </div>
+
+            <script>
+            const frames = \(framesJSON);
+            const width = \(matrixWidth);
+            const height = \(matrixHeight);
+            const scale = 12;
+            const ledRadius = 5;
+            const canvas = document.getElementById('led');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+
+            let currentFrame = 0;
+            let isPlaying = true;
+            let fps = 30;
+            let intervalId = null;
+
+            function drawFrame(frameIndex) {
+                const frame = frames[frameIndex];
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                for (let row = 0; row < height; row++) {
+                    for (let col = 0; col < width; col++) {
+                        const [r, g, b] = frame[row][col];
+                        const x = col * scale + scale / 2;
+                        const y = row * scale + scale / 2;
+
+                        // Glow effect
+                        if (r > 20 || g > 20 || b > 20) {
+                            const gradient = ctx.createRadialGradient(x, y, 0, x, y, ledRadius * 1.5);
+                            gradient.addColorStop(0, `rgba(${r},${g},${b},0.8)`);
+                            gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+                            ctx.fillStyle = gradient;
+                            ctx.beginPath();
+                            ctx.arc(x, y, ledRadius * 1.5, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+
+                        // LED circle
+                        ctx.fillStyle = `rgb(${r},${g},${b})`;
+                        ctx.beginPath();
+                        ctx.arc(x, y, ledRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+
+                document.getElementById('frameInfo').textContent = `Frame ${frameIndex + 1} / ${frames.length}`;
+            }
+
+            function nextFrame() {
+                currentFrame = (currentFrame + 1) % frames.length;
+                drawFrame(currentFrame);
+            }
+
+            function prevFrame() {
+                currentFrame = (currentFrame - 1 + frames.length) % frames.length;
+                drawFrame(currentFrame);
+            }
+
+            function startAnimation() {
+                if (intervalId) clearInterval(intervalId);
+                intervalId = setInterval(nextFrame, 1000 / fps);
+            }
+
+            function stopAnimation() {
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+            }
+
+            document.getElementById('playPause').addEventListener('click', function() {
+                isPlaying = !isPlaying;
+                this.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+                this.classList.toggle('active', isPlaying);
+                if (isPlaying) startAnimation();
+                else stopAnimation();
+            });
+
+            document.getElementById('stepBack').addEventListener('click', function() {
+                if (isPlaying) {
+                    isPlaying = false;
+                    document.getElementById('playPause').textContent = '▶ Play';
+                    document.getElementById('playPause').classList.remove('active');
+                    stopAnimation();
+                }
+                prevFrame();
+            });
+
+            document.getElementById('stepForward').addEventListener('click', function() {
+                if (isPlaying) {
+                    isPlaying = false;
+                    document.getElementById('playPause').textContent = '▶ Play';
+                    document.getElementById('playPause').classList.remove('active');
+                    stopAnimation();
+                }
+                nextFrame();
+            });
+
+            document.getElementById('speed').addEventListener('input', function() {
+                fps = parseInt(this.value);
+                document.getElementById('fps').textContent = fps + ' fps';
+                if (isPlaying) startAnimation();
+            });
+
+            // Start
+            drawFrame(0);
+            startAnimation();
+            </script>
+        </body>
+        </html>
+        """
+    }
+
     private func generateGIF(outputPath: String) -> Result<String, PreviewError> {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("julelys_preview_\(UUID().uuidString)")
 

@@ -193,19 +193,19 @@ extension JulelysMCP {
                 Tool(
                     name: RegisteredTools.previewSequence.rawValue,
                     description: """
-                        Generate a GIF preview of a JavaScript sequence 🎬
+                        Generate an HTML preview of a JavaScript sequence 🎬
 
-                        Creates an animated GIF showing how the sequence looks on the LED matrix.
-                        This allows you to test and preview sequences before activating them on real LEDs.
+                        Creates an interactive HTML page with canvas animation showing how the sequence
+                        looks on the LED matrix. The preview includes play/pause, step controls, and
+                        adjustable speed.
 
                         Requirements:
                         - Only JavaScript sequences can be previewed (custom or built-in JS)
-                        - ImageMagick or ffmpeg must be installed on the system
-                        - Install with: brew install imagemagick (macOS) or apt install imagemagick (Linux)
+                        - No external tools required (no ImageMagick/ffmpeg needed!)
 
                         Returns:
-                        - gifPath: Path to the generated GIF file
-                        - gifBase64: Base64 encoded GIF data (for direct display)
+                        - gifPath: Path to the saved HTML file
+                        - htmlContent: Full HTML content (can be opened in any browser)
                         - frameCount: Number of frames captured
                         """,
                     inputSchema: .object([
@@ -510,14 +510,14 @@ extension JulelysMCP {
                     📊 Frames captured: \(response.frameCount)
                     """
 
-                if let gifPath = response.gifPath {
-                    result += "\n📁 GIF saved to: \(gifPath)"
+                if let path = response.gifPath {
+                    result += "\n📁 HTML saved to: \(path)"
                 }
 
-                if let base64 = response.gifBase64 {
-                    // Return the base64 data for clients that can display it
-                    result += "\n\n📎 GIF Data (base64): data:image/gif;base64,\(base64.prefix(100))..."
-                    result += "\n\n💡 Tip: Copy the full gifBase64 value and paste into a browser or use a base64 decoder to view the animation."
+                if let htmlContent = response.htmlContent {
+                    // Return the full HTML content that can be opened in a browser
+                    result += "\n\n📄 HTML Preview (open in browser or save as .html file):\n\n"
+                    result += htmlContent
                 }
 
                 return result

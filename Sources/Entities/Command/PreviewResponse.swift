@@ -5,6 +5,7 @@ public struct PreviewResponse: Codable {
     public let sequenceName: String
     public let gifPath: String?
     public let gifBase64: String?
+    public let htmlContent: String?
     public let frameCount: Int
     public let error: String?
 
@@ -13,6 +14,7 @@ public struct PreviewResponse: Codable {
         sequenceName: String,
         gifPath: String? = nil,
         gifBase64: String? = nil,
+        htmlContent: String? = nil,
         frameCount: Int = 0,
         error: String? = nil
     ) {
@@ -20,6 +22,7 @@ public struct PreviewResponse: Codable {
         self.sequenceName = sequenceName
         self.gifPath = gifPath
         self.gifBase64 = gifBase64
+        self.htmlContent = htmlContent
         self.frameCount = frameCount
         self.error = error
     }
