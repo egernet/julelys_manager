@@ -173,9 +173,11 @@ struct JulelysManager: ParsableCommand {
                     // Create a fresh sequence instance for preview (to avoid affecting active sequences)
                     let previewSeq: SequenceType
                     if let codeData = CustomSequenceStorage.getCode(name: name) {
-                        previewSeq = JSSequence(matrixWidth: width, matrixHeight: height, jsCode: codeData.jsCode)
+                        previewSeq = JSSequence(matrixWidth: width, matrixHeight: height, jsCode: codeData.jsCode, previewMode: true)
                     } else if let jsSeq = sequenceData.sequence as? JSSequence, let jsFile = jsSeq.jsFile {
-                        previewSeq = JSSequence(matrixWidth: width, matrixHeight: height, jsFile: jsFile)
+                        let seq = JSSequence(matrixWidth: width, matrixHeight: height, jsFile: jsFile)
+                        seq.previewMode = true
+                        previewSeq = seq
                     } else {
                         return PreviewResponse.failure(
                             sequenceName: name,

@@ -71,6 +71,9 @@ class PreviewController: SequenceDelegate {
         // PPM format: simple image format
         // Scale up the LED matrix for visibility (each LED = 10x10 pixels)
         let scale = 10
+        let radius = scale / 2  // Circle radius
+        let radiusSquared = (radius - 1) * (radius - 1)  // Slightly smaller for nicer look
+
         // Image dimensions: width = columns (matrixWidth), height = rows (matrixHeight)
         let imageWidth = matrixWidth * scale
         let imageHeight = matrixHeight * scale
@@ -79,21 +82,32 @@ class PreviewController: SequenceDelegate {
         var pixels = Data()
         pixels.reserveCapacity(imageWidth * imageHeight * 3)
 
-        // Iterate rows (x) then columns (y)
-        for x in 0..<matrixHeight {
-            for _ in 0..<scale { // Repeat row for scaling
-                for y in 0..<matrixWidth {
-                    let color = frame[x][y]
-                    // Combine RGBW to RGB for display
+        // Iterate over each pixel in the output image
+        for row in 0..<imageHeight {
+            let ledX = row / scale  // Which LED row
+            let localY = row % scale - radius  // Y offset from LED center
+
+            for col in 0..<imageWidth {
+                let ledY = col / scale  // Which LED column
+                let localX = col % scale - radius  // X offset from LED center
+
+                // Check if this pixel is inside the circle
+                let distSquared = localX * localX + localY * localY
+
+                if distSquared <= radiusSquared {
+                    // Inside circle - use LED color
+                    let color = frame[ledX][ledY]
                     let r = min(255, Int(color.red) + Int(color.white) / 2)
                     let g = min(255, Int(color.green) + Int(color.white) / 2)
                     let b = min(255, Int(color.blue) + Int(color.white) / 2)
-
-                    for _ in 0..<scale { // Repeat pixel for scaling
-                        pixels.append(UInt8(r))
-                        pixels.append(UInt8(g))
-                        pixels.append(UInt8(b))
-                    }
+                    pixels.append(UInt8(r))
+                    pixels.append(UInt8(g))
+                    pixels.append(UInt8(b))
+                } else {
+                    // Outside circle - black background
+                    pixels.append(0)
+                    pixels.append(0)
+                    pixels.append(0)
                 }
             }
         }

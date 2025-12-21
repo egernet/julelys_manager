@@ -7,6 +7,7 @@ final class JSSequence: SequenceType {
     let matrixWidth: Int
     let jsFile: String?
     var stop = false
+    var previewMode = false  // Skip delays when true
 
     private var ctx: JSContext?
     private var code: String?
@@ -19,11 +20,12 @@ final class JSSequence: SequenceType {
         self.directCode = nil
     }
 
-    init(matrixWidth: Int, matrixHeight: Int, jsCode: String) {
+    init(matrixWidth: Int, matrixHeight: Int, jsCode: String, previewMode: Bool = false) {
         self.matrixHeight = matrixHeight
         self.matrixWidth = matrixWidth
         self.jsFile = nil
         self.directCode = jsCode
+        self.previewMode = previewMode
     }
 
     private func setPixelColor(point: Point, color: Color) {
@@ -47,7 +49,11 @@ final class JSSequence: SequenceType {
         self.ctx = context
 
         // --- delay(ms)
-        let delayFn = JSObject(newFunctionIn: context) { context, this, arguments in
+        let delayFn = JSObject(newFunctionIn: context) { [weak self] context, this, arguments in
+            // Skip delays in preview mode for faster GIF generation
+            guard self?.previewMode != true else {
+                return .init(undefinedIn: context)
+            }
             if let ms = arguments.first?.doubleValue {
                 Thread.sleep(forTimeInterval: ms / 1000)
             }
