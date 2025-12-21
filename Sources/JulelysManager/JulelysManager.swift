@@ -163,21 +163,35 @@ struct JulelysManager: ParsableCommand {
                 },
                 previewSequence: { name, maxFrames, frameDelay in
                     // Find the sequence by name
-                    guard let sequenceData = sequences.first(where: { $0.info.name == name }) else {
+                    guard sequences.first(where: { $0.info.name == name }) != nil else {
                         return PreviewResponse.failure(
                             sequenceName: name,
                             error: "Sequence '\(name)' not found"
                         )
                     }
 
-                    // Create a fresh sequence instance for preview (to avoid affecting active sequences)
-                    let previewSeq: SequenceType
+                    // Get the JS code for the sequence
+                    let jsCode: String
                     if let codeData = CustomSequenceStorage.getCode(name: name) {
-                        previewSeq = JSSequence(matrixWidth: width, matrixHeight: height, jsCode: codeData.jsCode, previewMode: true)
-                    } else if let jsSeq = sequenceData.sequence as? JSSequence, let jsFile = jsSeq.jsFile {
-                        let seq = JSSequence(matrixWidth: width, matrixHeight: height, jsFile: jsFile)
-                        seq.previewMode = true
-                        previewSeq = seq
+                        jsCode = codeData.jsCode
+                    } else if let bundlePath = Bundle.module.path(forResource: "SequencesJS", ofType: nil) {
+                        // Try to find built-in JS sequence
+                        let possibleFiles = ["\(name).js", "\(name.lowercased()).js"]
+                        var foundCode: String? = nil
+                        for file in possibleFiles {
+                            let filePath = bundlePath + "/" + file
+                            if let code = try? String(contentsOfFile: filePath, encoding: .utf8) {
+                                foundCode = code
+                                break
+                            }
+                        }
+                        guard let code = foundCode else {
+                            return PreviewResponse.failure(
+                                sequenceName: name,
+                                error: "Only JavaScript sequences can be previewed"
+                            )
+                        }
+                        jsCode = code
                     } else {
                         return PreviewResponse.failure(
                             sequenceName: name,
@@ -192,35 +206,25 @@ struct JulelysManager: ParsableCommand {
                         frameDelay: frameDelay
                     )
 
-                    fputs("🎬 Generating HTML preview for '\(name)' (\(maxFrames) frames)...\n", stderr)
+                    fputs("🎬 Generating HTML preview for '\(name)'...\n", stderr)
 
-                    // Use HTML preview (no ImageMagick required)
-                    let result = previewController.captureSequenceAsHTML(previewSeq)
+                    // Generate HTML with embedded JS code (no frame capture needed!)
+                    let htmlContent = previewController.generateHTMLWithCode(sequenceName: name, jsCode: jsCode)
 
-                    switch result {
-                    case .success(let htmlContent):
-                        // Optionally save to file for convenience
-                        let outputDir = CustomSequenceStorage.directoryURL.deletingLastPathComponent().appendingPathComponent("Previews")
-                        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
-                        let outputPath = outputDir.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "_")).html").path
-                        try? htmlContent.write(toFile: outputPath, atomically: true, encoding: .utf8)
+                    // Save to file for convenience
+                    let outputDir = CustomSequenceStorage.directoryURL.deletingLastPathComponent().appendingPathComponent("Previews")
+                    try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+                    let outputPath = outputDir.appendingPathComponent("\(name.replacingOccurrences(of: " ", with: "_")).html").path
+                    try? htmlContent.write(toFile: outputPath, atomically: true, encoding: .utf8)
 
-                        fputs("✅ HTML preview generated: \(outputPath)\n", stderr)
-                        return PreviewResponse(
-                            success: true,
-                            sequenceName: name,
-                            gifPath: outputPath,
-                            htmlContent: htmlContent,
-                            frameCount: maxFrames
-                        )
-
-                    case .failure(let error):
-                        fputs("❌ Preview failed: \(error.localizedDescription)\n", stderr)
-                        return PreviewResponse.failure(
-                            sequenceName: name,
-                            error: error.localizedDescription
-                        )
-                    }
+                    fputs("✅ HTML preview generated: \(outputPath)\n", stderr)
+                    return PreviewResponse(
+                        success: true,
+                        sequenceName: name,
+                        gifPath: outputPath,
+                        htmlContent: htmlContent,
+                        frameCount: 0  // Not applicable for live JS preview
+                    )
                 }
             )
         }

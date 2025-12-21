@@ -193,20 +193,24 @@ extension JulelysMCP {
                 Tool(
                     name: RegisteredTools.previewSequence.rawValue,
                     description: """
-                        Generate an HTML preview of a JavaScript sequence 🎬
+                        Generate an interactive HTML preview of a JavaScript sequence 🎬
 
-                        Creates an interactive HTML page with canvas animation showing how the sequence
-                        looks on the LED matrix. The preview includes play/pause, step controls, and
-                        adjustable speed.
+                        Creates a self-contained HTML page that runs the actual JS sequence code
+                        in the browser with a canvas-based LED matrix simulation.
+
+                        Features:
+                        - Live execution of the sequence code
+                        - Start/Stop and Restart controls
+                        - Adjustable playback speed (0.1x to 2x)
+                        - Glow effects on LEDs for realistic look
+                        - No external tools required!
 
                         Requirements:
                         - Only JavaScript sequences can be previewed (custom or built-in JS)
-                        - No external tools required (no ImageMagick/ffmpeg needed!)
 
                         Returns:
                         - gifPath: Path to the saved HTML file
-                        - htmlContent: Full HTML content (can be opened in any browser)
-                        - frameCount: Number of frames captured
+                        - htmlContent: Full HTML content (open in any browser)
                         """,
                     inputSchema: .object([
                         "type": .string("object"),

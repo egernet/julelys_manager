@@ -41,48 +41,11 @@ class PreviewController: SequenceDelegate {
         return generateGIF(outputPath: outputPath)
     }
 
-    /// Run a sequence and capture frames, returns HTML content with embedded JS animation
-    func captureSequenceAsHTML(_ sequence: SequenceType) -> Result<String, PreviewError> {
-        var seq = sequence
-        seq.delegate = self
-        capturedFrames = []
-        frameCount = 0
-        shouldStop = false
-
-        // Run sequence in a limited way - it will stop when maxFrames is reached
-        seq.runSequence()
-
-        if capturedFrames.isEmpty {
-            return .failure(.noFramesCaptured)
-        }
-
-        // Generate HTML with embedded JavaScript animation
-        return .success(generateHTML(sequenceName: seq.name))
-    }
-
-    private func generateHTML(sequenceName: String) -> String {
-        // Convert frames to JSON array of color data
-        // Each frame is [row][col] = {r, g, b, w}
-        var framesJSON = "["
-        for (frameIndex, frame) in capturedFrames.enumerated() {
-            if frameIndex > 0 { framesJSON += "," }
-            framesJSON += "["
-            for (rowIndex, row) in frame.enumerated() {
-                if rowIndex > 0 { framesJSON += "," }
-                framesJSON += "["
-                for (colIndex, color) in row.enumerated() {
-                    if colIndex > 0 { framesJSON += "," }
-                    // Combine RGBW to RGB for display
-                    let r = min(255, Int(color.red) + Int(color.white) / 2)
-                    let g = min(255, Int(color.green) + Int(color.white) / 2)
-                    let b = min(255, Int(color.blue) + Int(color.white) / 2)
-                    framesJSON += "[\(r),\(g),\(b)]"
-                }
-                framesJSON += "]"
-            }
-            framesJSON += "]"
-        }
-        framesJSON += "]"
+    /// Generate HTML with embedded JS code that runs in the browser
+    func generateHTMLWithCode(sequenceName: String, jsCode: String) -> String {
+        // Transform delay(ms) to await delay(ms) for browser async compatibility
+        let transformedCode = jsCode
+            .replacingOccurrences(of: "delay(", with: "await delay(", options: [], range: nil)
 
         return """
         <!DOCTYPE html>
@@ -114,6 +77,8 @@ class PreviewController: SequenceDelegate {
                     display: flex;
                     gap: 10px;
                     align-items: center;
+                    flex-wrap: wrap;
+                    justify-content: center;
                 }
                 button {
                     background: #333;
@@ -126,147 +91,192 @@ class PreviewController: SequenceDelegate {
                 }
                 button:hover { background: #444; }
                 button.active { background: #0a0; }
+                button:disabled { opacity: 0.5; cursor: not-allowed; }
                 .speed-control {
                     display: flex;
                     align-items: center;
                     gap: 8px;
                 }
-                input[type="range"] {
-                    width: 100px;
-                }
-                .frame-info {
+                input[type="range"] { width: 100px; }
+                .status {
                     color: #888;
                     font-size: 0.85em;
-                    min-width: 120px;
+                    min-width: 100px;
                     text-align: center;
                 }
+                .status.running { color: #0f0; }
             </style>
         </head>
         <body>
             <h1>\(sequenceName)</h1>
-            <div class="info">\(matrixWidth) x \(matrixHeight) LED matrix • \(capturedFrames.count) frames</div>
+            <div class="info">\(matrixWidth) x \(matrixHeight) LED matrix</div>
             <canvas id="led"></canvas>
             <div class="controls">
-                <button id="playPause" class="active">⏸ Pause</button>
-                <button id="stepBack">⏮ Step</button>
-                <button id="stepForward">Step ⏭</button>
+                <button id="startStop" class="active">⏹ Stop</button>
+                <button id="restart">🔄 Restart</button>
                 <div class="speed-control">
                     <span>Speed:</span>
-                    <input type="range" id="speed" min="1" max="100" value="30">
-                    <span id="fps">30 fps</span>
+                    <input type="range" id="speed" min="10" max="200" value="100">
+                    <span id="speedLabel">1x</span>
                 </div>
-                <div class="frame-info" id="frameInfo">Frame 1 / \(capturedFrames.count)</div>
+                <div class="status" id="status">Running...</div>
             </div>
 
             <script>
-            const frames = \(framesJSON);
-            const width = \(matrixWidth);
-            const height = \(matrixHeight);
-            const scale = 12;
-            const ledRadius = 5;
+            // LED Matrix simulation
+            const WIDTH = \(matrixWidth);
+            const HEIGHT = \(matrixHeight);
+            const SCALE = 12;
+            const LED_RADIUS = 5;
+
             const canvas = document.getElementById('led');
             const ctx = canvas.getContext('2d');
+            canvas.width = WIDTH * SCALE;
+            canvas.height = HEIGHT * SCALE;
 
-            canvas.width = width * scale;
-            canvas.height = height * scale;
+            // Pixel buffer [row][col] = [r, g, b, w]
+            let pixels = [];
+            for (let row = 0; row < HEIGHT; row++) {
+                pixels[row] = [];
+                for (let col = 0; col < WIDTH; col++) {
+                    pixels[row][col] = [0, 0, 0, 0];
+                }
+            }
 
-            let currentFrame = 0;
-            let isPlaying = true;
-            let fps = 30;
-            let intervalId = null;
+            let speedMultiplier = 1.0;
+            let shouldStop = false;
+            let isRunning = false;
 
-            function drawFrame(frameIndex) {
-                const frame = frames[frameIndex];
+            // API functions matching the Swift implementation
+            const matrix = {
+                width: WIDTH,
+                height: HEIGHT
+            };
+
+            function setPixelColor(r, g, b, w, x, y) {
+                if (x >= 0 && x < HEIGHT && y >= 0 && y < WIDTH) {
+                    pixels[x][y] = [r, g, b, w];
+                }
+            }
+
+            function updatePixels() {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                for (let row = 0; row < height; row++) {
-                    for (let col = 0; col < width; col++) {
-                        const [r, g, b] = frame[row][col];
-                        const x = col * scale + scale / 2;
-                        const y = row * scale + scale / 2;
+                for (let row = 0; row < HEIGHT; row++) {
+                    for (let col = 0; col < WIDTH; col++) {
+                        const [r, g, b, w] = pixels[row][col];
+                        // Combine RGBW to RGB
+                        const rr = Math.min(255, r + w / 2);
+                        const gg = Math.min(255, g + w / 2);
+                        const bb = Math.min(255, b + w / 2);
+
+                        const x = col * SCALE + SCALE / 2;
+                        const y = row * SCALE + SCALE / 2;
 
                         // Glow effect
-                        if (r > 20 || g > 20 || b > 20) {
-                            const gradient = ctx.createRadialGradient(x, y, 0, x, y, ledRadius * 1.5);
-                            gradient.addColorStop(0, `rgba(${r},${g},${b},0.8)`);
-                            gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+                        if (rr > 20 || gg > 20 || bb > 20) {
+                            const gradient = ctx.createRadialGradient(x, y, 0, x, y, LED_RADIUS * 1.5);
+                            gradient.addColorStop(0, `rgba(${rr},${gg},${bb},0.8)`);
+                            gradient.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
                             ctx.fillStyle = gradient;
                             ctx.beginPath();
-                            ctx.arc(x, y, ledRadius * 1.5, 0, Math.PI * 2);
+                            ctx.arc(x, y, LED_RADIUS * 1.5, 0, Math.PI * 2);
                             ctx.fill();
                         }
 
                         // LED circle
-                        ctx.fillStyle = `rgb(${r},${g},${b})`;
+                        ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
                         ctx.beginPath();
-                        ctx.arc(x, y, ledRadius, 0, Math.PI * 2);
+                        ctx.arc(x, y, LED_RADIUS, 0, Math.PI * 2);
                         ctx.fill();
                     }
                 }
-
-                document.getElementById('frameInfo').textContent = `Frame ${frameIndex + 1} / ${frames.length}`;
             }
 
-            function nextFrame() {
-                currentFrame = (currentFrame + 1) % frames.length;
-                drawFrame(currentFrame);
+            function delay(ms) {
+                if (shouldStop) throw new Error('stopped');
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => resolve(), ms / speedMultiplier);
+                    // Check for stop during delay
+                    const check = setInterval(() => {
+                        if (shouldStop) {
+                            clearTimeout(timeout);
+                            clearInterval(check);
+                            reject(new Error('stopped'));
+                        }
+                    }, 50);
+                });
             }
 
-            function prevFrame() {
-                currentFrame = (currentFrame - 1 + frames.length) % frames.length;
-                drawFrame(currentFrame);
-            }
-
-            function startAnimation() {
-                if (intervalId) clearInterval(intervalId);
-                intervalId = setInterval(nextFrame, 1000 / fps);
-            }
-
-            function stopAnimation() {
-                if (intervalId) {
-                    clearInterval(intervalId);
-                    intervalId = null;
+            // Clear all pixels
+            function clearPixels() {
+                for (let row = 0; row < HEIGHT; row++) {
+                    for (let col = 0; col < WIDTH; col++) {
+                        pixels[row][col] = [0, 0, 0, 0];
+                    }
                 }
+                updatePixels();
             }
 
-            document.getElementById('playPause').addEventListener('click', function() {
-                isPlaying = !isPlaying;
-                this.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-                this.classList.toggle('active', isPlaying);
-                if (isPlaying) startAnimation();
-                else stopAnimation();
+            // The sequence code
+            async function runSequence() {
+                \(transformedCode)
+            }
+
+            async function start() {
+                shouldStop = false;
+                isRunning = true;
+                document.getElementById('status').textContent = 'Running...';
+                document.getElementById('status').className = 'status running';
+                document.getElementById('startStop').textContent = '⏹ Stop';
+                document.getElementById('startStop').classList.add('active');
+
+                try {
+                    await runSequence();
+                    document.getElementById('status').textContent = 'Finished';
+                } catch (e) {
+                    if (e.message !== 'stopped') {
+                        document.getElementById('status').textContent = 'Error: ' + e.message;
+                        console.error(e);
+                    } else {
+                        document.getElementById('status').textContent = 'Stopped';
+                    }
+                }
+
+                isRunning = false;
+                document.getElementById('status').className = 'status';
+                document.getElementById('startStop').textContent = '▶ Start';
+                document.getElementById('startStop').classList.remove('active');
+            }
+
+            function stop() {
+                shouldStop = true;
+            }
+
+            // Controls
+            document.getElementById('startStop').addEventListener('click', function() {
+                if (isRunning) {
+                    stop();
+                } else {
+                    start();
+                }
             });
 
-            document.getElementById('stepBack').addEventListener('click', function() {
-                if (isPlaying) {
-                    isPlaying = false;
-                    document.getElementById('playPause').textContent = '▶ Play';
-                    document.getElementById('playPause').classList.remove('active');
-                    stopAnimation();
-                }
-                prevFrame();
-            });
-
-            document.getElementById('stepForward').addEventListener('click', function() {
-                if (isPlaying) {
-                    isPlaying = false;
-                    document.getElementById('playPause').textContent = '▶ Play';
-                    document.getElementById('playPause').classList.remove('active');
-                    stopAnimation();
-                }
-                nextFrame();
+            document.getElementById('restart').addEventListener('click', function() {
+                stop();
+                clearPixels();
+                setTimeout(() => start(), 100);
             });
 
             document.getElementById('speed').addEventListener('input', function() {
-                fps = parseInt(this.value);
-                document.getElementById('fps').textContent = fps + ' fps';
-                if (isPlaying) startAnimation();
+                speedMultiplier = this.value / 100;
+                document.getElementById('speedLabel').textContent = speedMultiplier.toFixed(1) + 'x';
             });
 
-            // Start
-            drawFrame(0);
-            startAnimation();
+            // Initial render and start
+            updatePixels();
+            start();
             </script>
         </body>
         </html>
