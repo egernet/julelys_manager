@@ -163,7 +163,7 @@ struct JulelysManager: ParsableCommand {
                 },
                 previewSequence: { name, maxFrames, frameDelay in
                     // Find the sequence by name
-                    guard sequences.first(where: { $0.info.name == name }) != nil else {
+                    guard let sequence = sequences.first(where: { $0.info.name == name })?.sequence as? JSSequence else {
                         return PreviewResponse.failure(
                             sequenceName: name,
                             error: "Sequence '\(name)' not found"
@@ -174,16 +174,11 @@ struct JulelysManager: ParsableCommand {
                     let jsCode: String
                     if let codeData = CustomSequenceStorage.getCode(name: name) {
                         jsCode = codeData.jsCode
-                    } else if let bundlePath = Bundle.module.path(forResource: "SequencesJS", ofType: nil) {
-                        // Try to find built-in JS sequence
-                        let possibleFiles = ["\(name).js", "\(name.lowercased()).js"]
+                    } else if let bundlePath = Bundle.module.path(forResource: "SequencesJS", ofType: nil), let jsFile = sequence.jsFile {
                         var foundCode: String? = nil
-                        for file in possibleFiles {
-                            let filePath = bundlePath + "/" + file
-                            if let code = try? String(contentsOfFile: filePath, encoding: .utf8) {
-                                foundCode = code
-                                break
-                            }
+                        let filePath = bundlePath + "/" + jsFile
+                        if let code = try? String(contentsOfFile: filePath, encoding: .utf8) {
+                            foundCode = code
                         }
                         guard let code = foundCode else {
                             return PreviewResponse.failure(
@@ -380,13 +375,7 @@ struct JulelysManager: ParsableCommand {
             .init(
                 id: "rainbowJava",
                 name: "Rainbow Javascript",
-                description: "Rainbow effect, use elk javascript engine.",
-                sequence: JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "rainbow.js")
-            ),
-            .init(
-                id: "rainbowJava",
-                name: "Rainbow Javascript",
-                description: "Rainbow effect, use elk javascript engine.",
+                description: "Rainbow effect, use javascript engine.",
                 sequence: JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "rainbow.js")
             ),
             .init(
