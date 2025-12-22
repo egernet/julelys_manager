@@ -47,7 +47,9 @@ struct JulelysManager: ParsableCommand {
 
         // Load saved active sequences from last session
         let savedActiveNames = CustomSequenceStorage.loadActiveSequences()
-        var activeSequences = sequences.filter { savedActiveNames.contains($0.info.name) }
+        var activeSequences = savedActiveNames.compactMap { name in
+            sequences.first { $0.info.name == name }
+        }
 
         if !activeSequences.isEmpty {
             fputs("▶️ Resuming with \(activeSequences.count) sequence(s): \(savedActiveNames.joined(separator: ", "))\n", stderr)
@@ -90,7 +92,9 @@ struct JulelysManager: ParsableCommand {
                     sequences.map({ $0.info })
                 },
                 runSequences: { names in
-                    activeSequences = sequences.filter { names.contains($0.info.name) }
+                    activeSequences = names.compactMap { name in
+                        sequences.first { $0.info.name == name }
+                    }
                     controller.update(activeSequences.map { $0.sequence })
 
                     // Save active sequences to disk
