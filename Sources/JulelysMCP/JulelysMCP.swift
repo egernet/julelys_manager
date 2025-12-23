@@ -209,7 +209,7 @@ extension JulelysMCP {
                         - Only JavaScript sequences can be previewed (custom or built-in JS)
 
                         Returns:
-                        - gifPath: Path to the saved HTML file
+                        - htmlPath: Path to the saved HTML file
                         - htmlContent: Full HTML content (open in any browser)
                         """,
                     inputSchema: .object([
@@ -218,14 +218,6 @@ extension JulelysMCP {
                             "name": .object([
                                 "type": .string("string"),
                                 "description": .string("Name of the sequence to preview"),
-                            ]),
-                            "maxFrames": .object([
-                                "type": .string("integer"),
-                                "description": .string("Maximum number of frames to capture (default: 60)"),
-                            ]),
-                            "frameDelay": .object([
-                                "type": .string("integer"),
-                                "description": .string("Delay between frames in milliseconds (default: 33 = ~30fps)"),
                             ])
                         ]),
                         "required": .array([.string("name")]),
@@ -355,20 +347,8 @@ extension JulelysMCP {
                 )
             }
 
-            var maxFrames = 60
-            if let maxFramesValue = params.arguments?["maxFrames"],
-               case .int(let frames) = maxFramesValue {
-                maxFrames = frames
-            }
-
-            var frameDelay = 33  // ~30 fps
-            if let frameDelayValue = params.arguments?["frameDelay"],
-               case .int(let delay) = frameDelayValue {
-                frameDelay = delay
-            }
-
             return .init(
-                content: [.text(previewSequenceHandler(name: name, maxFrames: maxFrames, frameDelay: frameDelay))],
+                content: [.text(previewSequenceHandler(name: name))],
                 isError: false
             )
         }
@@ -493,13 +473,11 @@ extension JulelysMCP {
         }
     }
 
-    private static func previewSequenceHandler(name: String, maxFrames: Int, frameDelay: Int) -> String {
+    private static func previewSequenceHandler(name: String) -> String {
         do {
             let request = RequestCommand(
                 cmd: .previewSequence,
-                sequenceName: name,
-                maxFrames: maxFrames,
-                frameDelay: frameDelay
+                sequenceName: name
             )
             let response: PreviewResponse = try sendCommand(request, decodeTo: PreviewResponse.self)
 
@@ -508,18 +486,13 @@ extension JulelysMCP {
             }
 
             if response.success {
-                var result = """
-                    🎬 Preview Generated for '\(response.sequenceName)'
+                var result = "🎬 Preview Generated for '\(response.sequenceName)'"
 
-                    📊 Frames captured: \(response.frameCount)
-                    """
-
-                if let path = response.gifPath {
+                if let path = response.htmlPath {
                     result += "\n📁 HTML saved to: \(path)"
                 }
 
                 if let htmlContent = response.htmlContent {
-                    // Return the full HTML content that can be opened in a browser
                     result += "\n\n📄 HTML Preview (open in browser or save as .html file):\n\n"
                     result += htmlContent
                 }

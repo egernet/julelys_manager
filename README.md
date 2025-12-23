@@ -245,22 +245,23 @@ Now the daemon starts automatically when the Pi boots! 🚀
 | `updateSequence` | ✏️ Update an existing custom sequence |
 | `getSequenceCode` | 📄 Get the JS code for a custom sequence |
 | `getStatus` | 📊 Get manager status (active sequences, mode, etc.) |
-| `previewSequence` | 🎬 Generate a GIF preview of a sequence |
+| `previewSequence` | 🎬 Generate an interactive HTML preview of a sequence |
 
 #### 🎬 Preview Sequences
 
-The `previewSequence` tool generates an animated GIF preview of a JavaScript sequence, allowing you to test how it looks before activating it on real LEDs.
+The `previewSequence` tool generates an interactive HTML preview of a JavaScript sequence, allowing you to test how it looks before activating it on real LEDs.
 
-**Requirements:**
-- ImageMagick or ffmpeg must be installed
-- Install with: `brew install imagemagick` (macOS) or `apt install imagemagick` (Linux)
+**Features:**
+- Live execution of the sequence code in the browser
+- Start/Stop and Restart controls
+- Adjustable playback speed (0.1x to 2x)
+- Glow effects on LEDs for realistic look
+- No external tools required!
 
 **Parameters:**
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `name` | required | Name of the sequence to preview |
-| `maxFrames` | 60 | Maximum frames to capture |
-| `frameDelay` | 100 | Delay between frames in ms |
 
 ---
 

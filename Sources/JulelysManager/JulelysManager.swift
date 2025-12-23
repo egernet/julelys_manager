@@ -165,7 +165,7 @@ struct JulelysManager: ParsableCommand {
                         mode: executesMode.rawValue
                     )
                 },
-                previewSequence: { name, maxFrames, frameDelay in
+                previewSequence: { name in
                     // Find the sequence by name
                     guard let sequence = sequences.first(where: { $0.info.name == name })?.sequence as? JSSequence else {
                         return PreviewResponse.failure(
@@ -179,12 +179,8 @@ struct JulelysManager: ParsableCommand {
                     if let codeData = CustomSequenceStorage.getCode(name: name) {
                         jsCode = codeData.jsCode
                     } else if let bundlePath = Bundle.module.path(forResource: "SequencesJS", ofType: nil), let jsFile = sequence.jsFile {
-                        var foundCode: String? = nil
                         let filePath = bundlePath + "/" + jsFile
-                        if let code = try? String(contentsOfFile: filePath, encoding: .utf8) {
-                            foundCode = code
-                        }
-                        guard let code = foundCode else {
+                        guard let code = try? String(contentsOfFile: filePath, encoding: .utf8) else {
                             return PreviewResponse.failure(
                                 sequenceName: name,
                                 error: "Only JavaScript sequences can be previewed"
@@ -200,14 +196,11 @@ struct JulelysManager: ParsableCommand {
 
                     let previewController = PreviewController(
                         matrixWidth: width,
-                        matrixHeight: height,
-                        maxFrames: maxFrames,
-                        frameDelay: frameDelay
+                        matrixHeight: height
                     )
 
                     fputs("🎬 Generating HTML preview for '\(name)'...\n", stderr)
 
-                    // Generate HTML with embedded JS code (no frame capture needed!)
                     let htmlContent = previewController.generateHTMLWithCode(sequenceName: name, jsCode: jsCode)
 
                     // Save to file for convenience
@@ -220,9 +213,8 @@ struct JulelysManager: ParsableCommand {
                     return PreviewResponse(
                         success: true,
                         sequenceName: name,
-                        gifPath: outputPath,
-                        htmlContent: htmlContent,
-                        frameCount: 0  // Not applicable for live JS preview
+                        htmlPath: outputPath,
+                        htmlContent: htmlContent
                     )
                 }
             )
@@ -237,7 +229,7 @@ struct JulelysManager: ParsableCommand {
         createSequence: @escaping (String, String, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
         updateSequence: @escaping (String, String?, String) -> (success: Bool, error: String?) = { _, _, _ in (false, "Not supported") },
         getStatus: @escaping () -> StatusResponse,
-        previewSequence: @escaping (String, Int, Int) -> PreviewResponse = { name, _, _ in PreviewResponse.failure(sequenceName: name, error: "Not supported") }
+        previewSequence: @escaping (String) -> PreviewResponse = { name in PreviewResponse.failure(sequenceName: name, error: "Not supported") }
     ) async {
         do {
             try await JulelysDaemon.start { inquiry in
@@ -344,10 +336,7 @@ struct JulelysManager: ParsableCommand {
                         )
                     }
 
-                    let maxFrames = inquiry.maxFrames ?? 60
-                    let frameDelay = inquiry.frameDelay ?? 100
-
-                    return previewSequence(name, maxFrames, frameDelay)
+                    return previewSequence(name)
                 }
             }
         } catch {

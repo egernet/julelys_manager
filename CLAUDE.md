@@ -70,7 +70,7 @@ Sources/
 │   │   ├── SPIBasedLedController.swift  # Real hardware
 │   │   ├── ConsoleController.swift      # Terminal simulation
 │   │   ├── WindowController.swift       # macOS GUI
-│   │   └── PreviewController.swift      # GIF generation
+│   │   └── PreviewController.swift      # HTML preview generation
 │   ├── Sequences/
 │   │   ├── SequenceType.swift           # Protocol
 │   │   ├── JSSequence.swift             # JavaScript engine
@@ -125,7 +125,7 @@ matrix.height                    // LEDs per string (55)
 | `updateSequence` | Update existing custom sequence |
 | `getSequenceCode` | Get JS code for a sequence |
 | `getStatus` | Get manager status |
-| `previewSequence` | Generate GIF preview |
+| `previewSequence` | Generate HTML preview |
 
 ## Platform-Specific Code
 
@@ -145,7 +145,7 @@ let sock = socket(AF_UNIX, SOCK_STREAM, 0)
 
 Subdirectories:
 - `CustomSequences/` - Custom JS sequences (.js + .json metadata)
-- `Previews/` - Generated GIF previews
+- `Previews/` - Generated HTML previews
 - `active_sequences.json` - Persisted active sequence list
 
 ## Testing
