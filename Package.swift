@@ -39,7 +39,8 @@ let package = Package(
             "Entities"
         ],
         resources: [
-            .copy("SequencesJS")
+            .copy("SequencesJS"),
+            .copy("Resources")
         ]
     ),
     .executableTarget(
