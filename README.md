@@ -252,9 +252,12 @@ Now the daemon starts automatically when the Pi boots! 🚀
 The `previewSequence` tool generates an interactive HTML preview of a JavaScript sequence, allowing you to test how it looks before activating it on real LEDs.
 
 **Features:**
+- **2D View**: Christmas tree fan shape (default)
+- **3D View**: Rotate around the flagpole with LED strings
 - Live execution of the sequence code in the browser
 - Start/Stop and Restart controls
 - Adjustable playback speed (0.1x to 2x)
+- Adjustable number of visible strings (1-8)
 - Glow effects on LEDs for realistic look
 - No external tools required!
 
@@ -340,7 +343,7 @@ Custom sequences are saved to:
 ┌─────────────────▼───────────────────────────────────────────┐
 │ JulelysManager (Daemon)                                     │
 │ - Sequence management                                       │
-│ - Custom JS sequences (SwiftJS/elk)                         │
+│ - Custom JS sequences (SwiftJS)                             │
 │ - Persistence                                               │
 └─────────────────┬───────────────────────────────────────────┘
                   │ SPI (2.5 Mbps)
@@ -414,7 +417,7 @@ Hardware:
 |---------|-------------|
 | [swift-argument-parser](https://github.com/apple/swift-argument-parser) | CLI argument parsing |
 | [SwiftSPI](https://github.com/egernet/swift_spi) | SPI communication |
-| [SwiftJS](https://github.com/SusanDoggie/SwiftJS) | JavaScript engine |
+| [SwiftJS](https://github.com/egernet/SwiftJS) | JavaScript engine |
 | [swift-sdk (MCP)](https://github.com/modelcontextprotocol/swift-sdk) | Model Context Protocol |
 
 ---

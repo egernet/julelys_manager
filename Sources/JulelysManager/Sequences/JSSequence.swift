@@ -1,5 +1,5 @@
 import Foundation
-import JavaScriptCore
+import SwiftJS
 
 final class JSSequence: SequenceType {
     var delegate: SequenceDelegate?
@@ -43,36 +43,60 @@ final class JSSequence: SequenceType {
             code = try? String(contentsOfFile: filePath, encoding: .utf8)
         }
 
-        guard let context = JSContext() else { return }
+        let context = JSContext()
         self.ctx = context
 
         // --- delay(ms)
-        let delayFn: @convention(block) (Double) -> Void = { ms in
-            Thread.sleep(forTimeInterval: ms / 1000)
+        let delayFn = JSObject(newFunctionIn: context) { context, this, arguments in
+            if let ms = arguments.first?.doubleValue {
+                Thread.sleep(forTimeInterval: ms / 1000)
+            }
+            return .init(undefinedIn: context)
         }
-        context.setObject(delayFn, forKeyedSubscript: "delay" as NSString)
+
+        context.global["delay"] = delayFn
 
         // --- setPixelColor(r,g,b,w,x,y)
-        let setPixelFn: @convention(block) (Double, Double, Double, Double, Double, Double) -> Void = { [weak self] r, g, b, w, x, y in
-            guard let self else { return }
-            let color = Color(red: UInt8(r), green: UInt8(g), blue: UInt8(b), white: UInt8(w))
-            let point = Point(x: Int(x), y: Int(y))
+        let setPixelFn = JSObject(newFunctionIn: context) { [weak self] context, this, args in
+            guard let self else { return .init(undefinedIn: context) }
+            guard args.count >= 6 else { return .init(undefinedIn: context) }
+
+            let r = UInt8(args[0].doubleValue ?? 0)
+            let g = UInt8(args[1].doubleValue ?? 0)
+            let b = UInt8(args[2].doubleValue ?? 0)
+            let w = UInt8(args[3].doubleValue ?? 0)
+            let x = Int(args[4].doubleValue ?? 0)
+            let y = Int(args[5].doubleValue ?? 0)
+
+            let color = Color(red: r, green: g, blue: b, white: w)
+            let point = Point(x: x, y: y)
             self.setPixelColor(point: point, color: color)
+            return .init(undefinedIn: context)
         }
-        context.setObject(setPixelFn, forKeyedSubscript: "setPixelColor" as NSString)
+
+        context.global["setPixelColor"] = setPixelFn
 
         // --- updatePixels()
-        let updateFn: @convention(block) () -> Void = { [weak self] in
+        let updateFn = JSObject(newFunctionIn: context) { [weak self] context, this, _ in
             self?.updatePixels()
+            return .init(undefinedIn: context)
         }
-        context.setObject(updateFn, forKeyedSubscript: "updatePixels" as NSString)
+
+        context.global["updatePixels"] = updateFn
 
         // --- matrix objekt
-        let matrixObj: [String: Any] = [
-            "width": matrixWidth,
-            "height": matrixHeight
-        ]
-        context.setObject(matrixObj, forKeyedSubscript: "matrix" as NSString)
+        context.global["matrix"] = JSObject(newObjectIn: context)
+
+        let width = JSPropertyDescriptor(
+            getter: { this in JSObject(double: Double(self.matrixWidth), in: this.context) }
+        )
+
+        let height = JSPropertyDescriptor(
+            getter: { this in JSObject(double: Double(self.matrixHeight), in: this.context) }
+        )
+
+        context.global["matrix"].defineProperty("width", width)
+        context.global["matrix"].defineProperty("height", height)
     }
 
     func runSequence() {
@@ -80,6 +104,6 @@ final class JSSequence: SequenceType {
 
         guard let ctx, let code else { return }
 
-        ctx.evaluateScript(code)
+        _ = ctx.evaluateScript(code)
     }
 }
