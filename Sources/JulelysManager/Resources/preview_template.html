@@ -69,26 +69,76 @@
             <input type="range" id="speed" min="10" max="200" value="100">
             <span id="speedLabel">1x</span>
         </div>
+        <div class="speed-control">
+            <span>Strenge:</span>
+            <input type="range" id="strings" min="1" max="{{MATRIX_WIDTH}}" value="{{MATRIX_WIDTH}}">
+            <span id="stringsLabel">{{MATRIX_WIDTH}}</span>
+        </div>
         <div class="status" id="status">Running...</div>
     </div>
 
     <script>
     // LED Matrix simulation
-    const WIDTH = {{MATRIX_WIDTH}};
+    const MAX_WIDTH = {{MATRIX_WIDTH}};
     const HEIGHT = {{MATRIX_HEIGHT}};
     const SCALE = 12;
     const LED_RADIUS = 5;
 
+    let visibleStrings = MAX_WIDTH;  // Number of strings to show
+
     const canvas = document.getElementById('led');
     const ctx = canvas.getContext('2d');
-    canvas.width = WIDTH * SCALE;
-    canvas.height = HEIGHT * SCALE;
+
+    // Christmas tree shape - fan/arc at bottom
+    const treeHeight = HEIGHT * SCALE;
+
+    // Fan shape: LEDs spread in an arc at the bottom
+    const fanRadius = HEIGHT * SCALE * 0.6;  // Radius of the fan arc
+    const fanAngle = Math.PI * 0.4;  // Total angle of the fan (about 72 degrees)
+    const centerX = fanRadius + SCALE;  // Center point of the fan
+    const treeBaseWidth = centerX * 2;
+
+    canvas.width = treeBaseWidth;
+    canvas.height = treeHeight;
+
+    // Function to compute LED positions based on visible strings
+    function computeLedPositions(numStrings) {
+        const positions = [];
+        for (let row = 0; row < HEIGHT; row++) {
+            positions[row] = [];
+            // Progress from bottom (0) to top (1)
+            const progress = row / (HEIGHT - 1);
+
+            // Calculate row width based on angle spread
+            // At bottom: full fan angle, at top: minimum width for side-by-side LEDs
+            const minRowWidth = numStrings * SCALE;  // Minimum width at top (LEDs side by side)
+            const maxRowWidth = 2 * fanRadius * Math.sin(fanAngle / 2);  // Width at bottom
+
+            // Interpolate row width
+            const rowWidth = maxRowWidth - progress * (maxRowWidth - minRowWidth);
+
+            for (let col = 0; col < numStrings; col++) {
+                // Position LEDs evenly across the row width
+                const spacing = rowWidth / numStrings;
+                const xOffset = (col - (numStrings - 1) / 2) * spacing;
+
+                positions[row][col] = {
+                    x: centerX + xOffset,
+                    // Y position based on row, flipped so row 0 is at bottom
+                    y: treeHeight - (row * SCALE + SCALE / 2)
+                };
+            }
+        }
+        return positions;
+    }
+
+    let ledPositions = computeLedPositions(visibleStrings);
 
     // Pixel buffer [row][col] = [r, g, b, w]
     let pixels = [];
     for (let row = 0; row < HEIGHT; row++) {
         pixels[row] = [];
-        for (let col = 0; col < WIDTH; col++) {
+        for (let col = 0; col < MAX_WIDTH; col++) {
             pixels[row][col] = [0, 0, 0, 0];
         }
     }
@@ -98,13 +148,14 @@
     let isRunning = false;
 
     // API functions matching the Swift implementation
+    // matrix.width returns the current visible strings count
     const matrix = {
-        width: WIDTH,
+        get width() { return visibleStrings; },
         height: HEIGHT
     };
 
     function setPixelColor(r, g, b, w, x, y) {
-        if (x >= 0 && x < HEIGHT && y >= 0 && y < WIDTH) {
+        if (x >= 0 && x < HEIGHT && y >= 0 && y < MAX_WIDTH) {
             pixels[x][y] = [r, g, b, w];
         }
     }
@@ -114,17 +165,19 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for (let row = 0; row < HEIGHT; row++) {
-            for (let col = 0; col < WIDTH; col++) {
+            for (let col = 0; col < visibleStrings; col++) {
                 const [r, g, b, w] = pixels[row][col];
                 // Combine RGBW to RGB
                 const rr = Math.min(255, r + w / 2);
                 const gg = Math.min(255, g + w / 2);
                 const bb = Math.min(255, b + w / 2);
 
-                const x = col * SCALE + SCALE / 2;
-                const y = row * SCALE + SCALE / 2;
+                // Use precomputed tree positions
+                const pos = ledPositions[row][col];
+                const x = pos.x;
+                const y = pos.y;
 
-                // Glow effect
+                // Glow effect (only for lit LEDs)
                 if (rr > 20 || gg > 20 || bb > 20) {
                     const gradient = ctx.createRadialGradient(x, y, 0, x, y, LED_RADIUS * 1.5);
                     gradient.addColorStop(0, `rgba(${rr},${gg},${bb},0.8)`);
@@ -135,8 +188,9 @@
                     ctx.fill();
                 }
 
-                // LED circle
-                ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
+                // LED circle - always draw, show as dark (#222) when off
+                const isOff = rr < 5 && gg < 5 && bb < 5;
+                ctx.fillStyle = isOff ? '#222' : `rgb(${rr},${gg},${bb})`;
                 ctx.beginPath();
                 ctx.arc(x, y, LED_RADIUS, 0, Math.PI * 2);
                 ctx.fill();
@@ -162,7 +216,7 @@
     // Clear all pixels
     function clearPixels() {
         for (let row = 0; row < HEIGHT; row++) {
-            for (let col = 0; col < WIDTH; col++) {
+            for (let col = 0; col < MAX_WIDTH; col++) {
                 pixels[row][col] = [0, 0, 0, 0];
             }
         }
@@ -222,6 +276,13 @@
     document.getElementById('speed').addEventListener('input', function() {
         speedMultiplier = this.value / 100;
         document.getElementById('speedLabel').textContent = speedMultiplier.toFixed(1) + 'x';
+    });
+
+    document.getElementById('strings').addEventListener('input', function() {
+        visibleStrings = parseInt(this.value);
+        document.getElementById('stringsLabel').textContent = visibleStrings;
+        ledPositions = computeLedPositions(visibleStrings);
+        clearPixels();
     });
 
     // Initial render and start
