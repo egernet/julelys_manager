@@ -15,12 +15,18 @@
             justify-content: center;
             min-height: 100vh;
             padding: 20px;
+            overflow: hidden;
         }
         h1 { margin-bottom: 10px; font-size: 1.5em; }
         .info { color: #888; margin-bottom: 20px; font-size: 0.9em; }
-        canvas {
+        #canvas2d {
             border-radius: 8px;
             box-shadow: 0 0 30px rgba(255,255,255,0.1);
+        }
+        #container3d {
+            width: 100%;
+            height: 70vh;
+            display: none;
         }
         .controls {
             margin-top: 20px;
@@ -47,23 +53,28 @@
             align-items: center;
             gap: 8px;
         }
-        input[type="range"] { width: 100px; }
+        input[type="range"] { width: 80px; }
         .status {
             color: #888;
             font-size: 0.85em;
-            min-width: 100px;
+            min-width: 80px;
             text-align: center;
         }
         .status.running { color: #0f0; }
+        .view-toggle { margin-left: 10px; }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <h1>{{SEQUENCE_NAME}}</h1>
-    <div class="info">{{MATRIX_WIDTH}} x {{MATRIX_HEIGHT}} LED matrix</div>
-    <canvas id="led"></canvas>
+    <div class="info">{{MATRIX_WIDTH}} x {{MATRIX_HEIGHT}} LED matrix <span id="viewInfo"></span></div>
+    <canvas id="canvas2d"></canvas>
+    <div id="container3d"></div>
     <div class="controls">
         <button id="startStop" class="active">⏹ Stop</button>
         <button id="restart">🔄 Restart</button>
+        <button id="toggleView" class="view-toggle">3D</button>
         <div class="speed-control">
             <span>Speed:</span>
             <input type="range" id="speed" min="10" max="200" value="100">
@@ -73,6 +84,10 @@
             <span>Strenge:</span>
             <input type="range" id="strings" min="1" max="{{MATRIX_WIDTH}}" value="{{MATRIX_WIDTH}}">
             <span id="stringsLabel">{{MATRIX_WIDTH}}</span>
+        </div>
+        <div class="speed-control" id="autoRotateControl" style="display: none;">
+            <span>Auto-roter:</span>
+            <input type="checkbox" id="autoRotate" checked>
         </div>
         <div class="status" id="status">Running...</div>
     </div>
@@ -84,57 +99,159 @@
     const SCALE = 12;
     const LED_RADIUS = 5;
 
-    let visibleStrings = MAX_WIDTH;  // Number of strings to show
+    let visibleStrings = MAX_WIDTH;
+    let is3DMode = false;
 
-    const canvas = document.getElementById('led');
-    const ctx = canvas.getContext('2d');
+    // ============ 2D Setup ============
+    const canvas2d = document.getElementById('canvas2d');
+    const ctx = canvas2d.getContext('2d');
 
-    // Christmas tree shape - fan/arc at bottom
-    const treeHeight = HEIGHT * SCALE;
+    const treeHeight2d = HEIGHT * SCALE;
+    const fanRadius = HEIGHT * SCALE * 0.6;
+    const fanAngle = Math.PI * 0.4;
+    const centerX2d = fanRadius + SCALE;
+    const treeBaseWidth = centerX2d * 2;
 
-    // Fan shape: LEDs spread in an arc at the bottom
-    const fanRadius = HEIGHT * SCALE * 0.6;  // Radius of the fan arc
-    const fanAngle = Math.PI * 0.4;  // Total angle of the fan (about 72 degrees)
-    const centerX = fanRadius + SCALE;  // Center point of the fan
-    const treeBaseWidth = centerX * 2;
+    canvas2d.width = treeBaseWidth;
+    canvas2d.height = treeHeight2d;
 
-    canvas.width = treeBaseWidth;
-    canvas.height = treeHeight;
-
-    // Function to compute LED positions based on visible strings
-    function computeLedPositions(numStrings) {
+    function computeLedPositions2D(numStrings) {
         const positions = [];
         for (let row = 0; row < HEIGHT; row++) {
             positions[row] = [];
-            // Progress from bottom (0) to top (1)
             const progress = row / (HEIGHT - 1);
-
-            // Calculate row width based on angle spread
-            // At bottom: full fan angle, at top: minimum width for side-by-side LEDs
-            const minRowWidth = numStrings * SCALE;  // Minimum width at top (LEDs side by side)
-            const maxRowWidth = 2 * fanRadius * Math.sin(fanAngle / 2);  // Width at bottom
-
-            // Interpolate row width
+            const minRowWidth = numStrings * SCALE;
+            const maxRowWidth = 2 * fanRadius * Math.sin(fanAngle / 2);
             const rowWidth = maxRowWidth - progress * (maxRowWidth - minRowWidth);
 
             for (let col = 0; col < numStrings; col++) {
-                // Position LEDs evenly across the row width
                 const spacing = rowWidth / numStrings;
                 const xOffset = (col - (numStrings - 1) / 2) * spacing;
-
                 positions[row][col] = {
-                    x: centerX + xOffset,
-                    // Y position based on row, flipped so row 0 is at bottom
-                    y: treeHeight - (row * SCALE + SCALE / 2)
+                    x: centerX2d + xOffset,
+                    y: treeHeight2d - (row * SCALE + SCALE / 2)
                 };
             }
         }
         return positions;
     }
 
-    let ledPositions = computeLedPositions(visibleStrings);
+    let ledPositions2D = computeLedPositions2D(visibleStrings);
 
-    // Pixel buffer [row][col] = [r, g, b, w]
+    // ============ 3D Setup ============
+    const container3d = document.getElementById('container3d');
+    let scene, camera, renderer, controls3d;
+    let ledMeshes = [];
+    let glowTexture;
+
+    const baseRadius3d = 15;
+    const topRadius3d = 2;
+
+    function init3D() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+
+        camera = new THREE.PerspectiveCamera(60, container3d.clientWidth / container3d.clientHeight, 0.1, 1000);
+        camera.position.set(0, 30, 80);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container3d.clientWidth, container3d.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container3d.appendChild(renderer.domElement);
+
+        controls3d = new THREE.OrbitControls(camera, renderer.domElement);
+        controls3d.enableDamping = true;
+        controls3d.dampingFactor = 0.05;
+        controls3d.autoRotate = true;
+        controls3d.autoRotateSpeed = 1.0;
+        controls3d.target.set(0, 25, 0);
+
+        // Create glow texture
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 64;
+        glowCanvas.height = 64;
+        const glowCtx = glowCanvas.getContext('2d');
+        const gradient = glowCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255,255,255,1)');
+        gradient.addColorStop(0.3, 'rgba(255,255,255,0.5)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
+        glowCtx.fillStyle = gradient;
+        glowCtx.fillRect(0, 0, 64, 64);
+        glowTexture = new THREE.CanvasTexture(glowCanvas);
+
+        // Add flagpole
+        const poleGeometry = new THREE.CylinderGeometry(0.5, 0.5, HEIGHT + 10, 16);
+        const poleMaterial = new THREE.MeshBasicMaterial({ color: 0x444444 });
+        const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+        pole.position.y = HEIGHT / 2 - 5;
+        scene.add(pole);
+
+        // Add ground
+        const groundGeometry = new THREE.CircleGeometry(25, 32);
+        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -1;
+        scene.add(ground);
+
+        createLedMeshes(visibleStrings);
+        animate3D();
+    }
+
+    const ledGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+
+    function createLedMeshes(numStrings) {
+        // Remove old meshes
+        ledMeshes.forEach(row => {
+            row.forEach(led => {
+                scene.remove(led.sphere);
+                scene.remove(led.glow);
+            });
+        });
+        ledMeshes.length = 0;
+
+        for (let row = 0; row < HEIGHT; row++) {
+            ledMeshes[row] = [];
+            const progress = row / (HEIGHT - 1);
+            const radius = baseRadius3d * (1 - progress) + topRadius3d * progress;
+            const y = row;
+
+            for (let col = 0; col < numStrings; col++) {
+                const angle = (col / numStrings) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+
+                const material = new THREE.MeshBasicMaterial({ color: 0x222222 });
+                const sphere = new THREE.Mesh(ledGeometry, material);
+                sphere.position.set(x, y, z);
+                scene.add(sphere);
+
+                const glowMaterial = new THREE.SpriteMaterial({
+                    map: glowTexture,
+                    color: 0x000000,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending
+                });
+                const glow = new THREE.Sprite(glowMaterial);
+                glow.scale.set(3, 3, 1);
+                glow.position.set(x, y, z);
+                glow.visible = false;
+                scene.add(glow);
+
+                ledMeshes[row][col] = { sphere, glow, material, glowMaterial };
+            }
+        }
+    }
+
+    function animate3D() {
+        requestAnimationFrame(animate3D);
+        if (is3DMode && controls3d) {
+            controls3d.update();
+            renderer.render(scene, camera);
+        }
+    }
+
+    // ============ Shared State ============
     let pixels = [];
     for (let row = 0; row < HEIGHT; row++) {
         pixels[row] = [];
@@ -147,8 +264,6 @@
     let shouldStop = false;
     let isRunning = false;
 
-    // API functions matching the Swift implementation
-    // matrix.width returns the current visible strings count
     const matrix = {
         get width() { return visibleStrings; },
         height: HEIGHT
@@ -161,23 +276,28 @@
     }
 
     function updatePixels() {
+        if (is3DMode) {
+            updatePixels3D();
+        } else {
+            updatePixels2D();
+        }
+    }
+
+    function updatePixels2D() {
         ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, canvas2d.width, canvas2d.height);
 
         for (let row = 0; row < HEIGHT; row++) {
             for (let col = 0; col < visibleStrings; col++) {
                 const [r, g, b, w] = pixels[row][col];
-                // Combine RGBW to RGB
                 const rr = Math.min(255, r + w / 2);
                 const gg = Math.min(255, g + w / 2);
                 const bb = Math.min(255, b + w / 2);
 
-                // Use precomputed tree positions
-                const pos = ledPositions[row][col];
+                const pos = ledPositions2D[row][col];
                 const x = pos.x;
                 const y = pos.y;
 
-                // Glow effect (only for lit LEDs)
                 if (rr > 20 || gg > 20 || bb > 20) {
                     const gradient = ctx.createRadialGradient(x, y, 0, x, y, LED_RADIUS * 1.5);
                     gradient.addColorStop(0, `rgba(${rr},${gg},${bb},0.8)`);
@@ -188,7 +308,6 @@
                     ctx.fill();
                 }
 
-                // LED circle - always draw, show as dark (#222) when off
                 const isOff = rr < 5 && gg < 5 && bb < 5;
                 ctx.fillStyle = isOff ? '#222' : `rgb(${rr},${gg},${bb})`;
                 ctx.beginPath();
@@ -198,11 +317,36 @@
         }
     }
 
+    function updatePixels3D() {
+        for (let row = 0; row < HEIGHT; row++) {
+            for (let col = 0; col < visibleStrings; col++) {
+                const [r, g, b, w] = pixels[row][col];
+                const rr = Math.min(255, r + w / 2);
+                const gg = Math.min(255, g + w / 2);
+                const bb = Math.min(255, b + w / 2);
+
+                const led = ledMeshes[row] && ledMeshes[row][col];
+                if (!led) continue;
+
+                const isOff = rr < 5 && gg < 5 && bb < 5;
+                const color = isOff ? 0x222222 : (rr << 16) | (gg << 8) | bb;
+                led.material.color.setHex(color);
+
+                if (!isOff) {
+                    led.glow.visible = true;
+                    led.glowMaterial.color.setHex(color);
+                    led.glowMaterial.opacity = 0.6;
+                } else {
+                    led.glow.visible = false;
+                }
+            }
+        }
+    }
+
     function delay(ms) {
         if (shouldStop) throw new Error('stopped');
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => resolve(), ms / speedMultiplier);
-            // Check for stop during delay
             const check = setInterval(() => {
                 if (shouldStop) {
                     clearTimeout(timeout);
@@ -213,7 +357,6 @@
         });
     }
 
-    // Clear all pixels
     function clearPixels() {
         for (let row = 0; row < HEIGHT; row++) {
             for (let col = 0; col < MAX_WIDTH; col++) {
@@ -258,6 +401,31 @@
         shouldStop = true;
     }
 
+    function toggleView() {
+        is3DMode = !is3DMode;
+        document.getElementById('toggleView').textContent = is3DMode ? '2D' : '3D';
+        document.getElementById('autoRotateControl').style.display = is3DMode ? 'flex' : 'none';
+        document.getElementById('viewInfo').textContent = is3DMode ? '- Træk for at rotere' : '';
+
+        if (is3DMode) {
+            canvas2d.style.display = 'none';
+            container3d.style.display = 'block';
+            if (!scene) {
+                init3D();
+            } else {
+                createLedMeshes(visibleStrings);
+            }
+            // Resize renderer
+            renderer.setSize(container3d.clientWidth, container3d.clientHeight);
+            camera.aspect = container3d.clientWidth / container3d.clientHeight;
+            camera.updateProjectionMatrix();
+        } else {
+            canvas2d.style.display = 'block';
+            container3d.style.display = 'none';
+        }
+        updatePixels();
+    }
+
     // Controls
     document.getElementById('startStop').addEventListener('click', function() {
         if (isRunning) {
@@ -273,6 +441,8 @@
         setTimeout(() => start(), 100);
     });
 
+    document.getElementById('toggleView').addEventListener('click', toggleView);
+
     document.getElementById('speed').addEventListener('input', function() {
         speedMultiplier = this.value / 100;
         document.getElementById('speedLabel').textContent = speedMultiplier.toFixed(1) + 'x';
@@ -281,8 +451,25 @@
     document.getElementById('strings').addEventListener('input', function() {
         visibleStrings = parseInt(this.value);
         document.getElementById('stringsLabel').textContent = visibleStrings;
-        ledPositions = computeLedPositions(visibleStrings);
+        ledPositions2D = computeLedPositions2D(visibleStrings);
+        if (is3DMode && scene) {
+            createLedMeshes(visibleStrings);
+        }
         clearPixels();
+    });
+
+    document.getElementById('autoRotate').addEventListener('change', function() {
+        if (controls3d) {
+            controls3d.autoRotate = this.checked;
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (is3DMode && renderer) {
+            renderer.setSize(container3d.clientWidth, container3d.clientHeight);
+            camera.aspect = container3d.clientWidth / container3d.clientHeight;
+            camera.updateProjectionMatrix();
+        }
     });
 
     // Initial render and start
