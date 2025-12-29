@@ -23,19 +23,14 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.1.3"),
     .package(url: "https://github.com/egernet/swift_spi.git", from: "0.1.0"),
-    .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0"),
-    .package(url: "https://github.com/SusanDoggie/SwiftJS.git", from: "1.1.5")
+    .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0")
   ],
   targets: [
-    .target(
-        name: "elk"
-    ),
     .executableTarget(
         name: "JulelysManager",
         dependencies: [
             argumentParser,
             .product(name: "SwiftSPI", package: "swift_spi"),
-            .product(name: "SwiftJS", package: "SwiftJS"),
             "Entities"
         ],
         resources: [
