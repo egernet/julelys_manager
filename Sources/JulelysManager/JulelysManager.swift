@@ -345,78 +345,53 @@ struct JulelysManager: ParsableCommand {
     }
     
     func loadAllSequence() -> [SequenceData] {
-        // Built-in sequences
-        var sequences: [SequenceData] = [
-            .init(
-                id: "Twist",
-                name: "Twist",
-                description: "The sequence creates an insp spiral up the flagpole, the color white.",
-                sequence: TwistSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight)
-            ),
-            .init(
-                id: "TestRed",
-                name: "Test red",
-                description: "This tests one link at a time on each string with red color, use elk javascript engine.",
-                sequence: JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "test.js")
-            ),
-            .init(
-                id: "TestAll",
-                name: "Test Color",
-                description: "This tests all four colors red green blue and white",
-                sequence: TestColorSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight)
-            ),
-            .init(
-                id: "rainbowJava",
-                name: "Rainbow Javascript",
-                description: "Rainbow effect, use javascript engine.",
-                sequence: JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: "rainbow.js")
-            ),
-            .init(
-                id: "rainbow",
-                name: "Rainbow",
-                description: "Rainbow effect",
-                sequence: RainbowCycleSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, iterations: 5)
-            ),
-            .init(
-                id: "Stars",
-                name: "Stars",
-                description: "Star effect, white color only",
-                sequence: StarSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, color: .trueWhite)
-            ),
-            .init(
-                id: "Fireworks",
-                name: "Fireworks",
-                description: "Fireworks bursting in different colors",
-                sequence: FireworksSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.pink, .green, .blue, .red, .yallow, .trueWhite, .purple, .magenta, .orange])
-            ),
-            .init(
-                id: "TheMatrix",
-                name: "The Matrix",
-                description: "The Matrix with true color",
-                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green], numberOfmatrixs: 150)
-            ),
-            .init(
-                id: "TheMatrixColors",
-                name: "The Matrix with 4 colors",
-                description: "The Matrix with green, red, white and yellow colors",
-                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.green, .green, .red, .green, .green, .trueWhite, .yallow], numberOfmatrixs: 200)
-            ),
-            .init(
-                id: "Dannebrog",
-                name: "Dannebrog",
-                description: "The Matrix with Dannebrog colors",
-                sequence: MatrixSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, colors: [.red, .red, .red, .red, .trueWhite], numberOfmatrixs: 200)
-            )
-        ]
+        var sequences: [SequenceData] = []
+
+        // Auto-discover built-in JS sequences from SequencesJS folder
+        if let bundlePath = Bundle.module.path(forResource: "SequencesJS", ofType: nil) {
+            let bundleURL = URL(fileURLWithPath: bundlePath)
+
+            do {
+                let files = try FileManager.default.contentsOfDirectory(at: bundleURL, includingPropertiesForKeys: nil)
+                let jsonFiles = files.filter { $0.pathExtension == "json" }
+
+                for jsonFile in jsonFiles {
+                    let jsonData = try Data(contentsOf: jsonFile)
+                    let metadata = try JSONDecoder().decode(BuiltinSequenceMetadata.self, from: jsonData)
+
+                    // Find matching JS file
+                    let jsFileName = jsonFile.deletingPathExtension().lastPathComponent + ".js"
+
+                    let sequenceData = SequenceData(
+                        id: metadata.id,
+                        name: metadata.name,
+                        description: metadata.description,
+                        sequence: JSSequence(matrixWidth: matrixWidth, matrixHeight: matrixHeight, jsFile: jsFileName)
+                    )
+                    sequences.append(sequenceData)
+                }
+            } catch {
+                fputs("⚠️ Error loading built-in sequences: \(error)\n", stderr)
+            }
+        }
+
+        // Sort sequences by name for consistent ordering
+        sequences.sort { $0.info.name < $1.info.name }
 
         // Load custom sequences from disk
         let customSequences = CustomSequenceStorage.loadAll(matrixWidth: matrixWidth, matrixHeight: matrixHeight)
         sequences.append(contentsOf: customSequences)
 
-        fputs("🎄 Loaded \(sequences.count) sequences (\(customSequences.count) custom)\n", stderr)
+        fputs("🎄 Loaded \(sequences.count) sequences (\(sequences.count - customSequences.count) built-in, \(customSequences.count) custom)\n", stderr)
 
         return sequences
     }
+}
+
+struct BuiltinSequenceMetadata: Codable {
+    let id: String
+    let name: String
+    let description: String
 }
 
 struct SequenceData {
