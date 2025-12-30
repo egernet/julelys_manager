@@ -96,14 +96,14 @@ final class SPIBasedLedController: LedControllerProtocol {
     private func setPixel(x: Int, y: Int, color: Color) {
         // x = row position (0 to height-1)
         // y = string/column (0 to width-1)
-        let col = x
-        let row = y
 
-        let index = (row * matrixHeight * 4) + (col * 4)
-
-        guard index >= 0, index + 3 < backBuffer.count else {
+        // Bounds check BEFORE calculating index
+        guard x >= 0, x < matrixHeight,
+              y >= 0, y < matrixWidth else {
             return
         }
+
+        let index = (y * matrixHeight * 4) + (x * 4)
 
         // Write to back buffer (no lock needed - single writer)
         backBuffer[index + 0] = color.red
