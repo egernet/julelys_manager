@@ -10,7 +10,8 @@ A Swift-based **command-line tool** for controlling a programmable LED matrix ov
 - 🤖 **MCP Server**: Control your Christmas lights via Claude or other AI assistants
 - 📝 **Custom JavaScript sequences**: Create and edit LED animations with JavaScript
 - 💾 **Persistence**: Active sequences are saved and restored on restart
-- 🌈 **Built-in sequences**: 12 pre-made animations (Rainbow, Stars, Fireworks, Matrix, etc.)
+- 🌈 **Built-in sequences**: 10 pre-made JavaScript animations (Rainbow, Stars, Fireworks, Matrix, etc.)
+- 🔄 **Auto-discovery**: Add new sequences by dropping `.js` + `.json` files
 - 🌐 **Remote control**: Control your Pi from your Mac via SSH
 
 ---
@@ -141,8 +142,8 @@ swift build -c release
 
 You should see:
 ```
+🎄 Loaded 10 sequences (10 built-in, 0 custom)
 🎄 julelys_manager daemon listening on /tmp/julelys.sock
-🎄 Loaded 12 sequences (0 custom)
 ```
 
 > 💡 **Tip**: Use `screen` or `tmux` so the daemon keeps running after you log out:
@@ -314,18 +315,35 @@ Custom sequences are saved to:
 
 ## 🌈 Built-in Sequences
 
-| Sequence | Description |
-|----------|-------------|
-| 🌀 Twist | Spiral pattern moving up |
-| 🌈 Rainbow | Color wheel rotation |
-| 🌈 Rainbow Javascript | JS-based rainbow effect |
-| 🔴 Test red | Single LED test |
-| 🎨 Test Color | Sequential RGBW test |
-| ⭐ Stars | Twinkling white stars |
-| 🎆 Fireworks | Bursting colorful fireworks |
-| 💚 The Matrix | Green cascading streams |
-| 🎨 The Matrix with 4 colors | Multi-color matrix effect |
-| 🇩🇰 Dannebrog | Danish flag colors |
+All sequences are written in JavaScript and auto-discovered from `Sources/JulelysManager/SequencesJS/`.
+
+| Sequence | File | Description |
+|----------|------|-------------|
+| 🌀 Twist | `twist.js` | Spiral pattern moving upward with fading tail |
+| 🌈 Rainbow Cycle | `rainbow_cycle.js` | Color wheel rotation across the matrix |
+| ⭐ Stars | `stars.js` | Twinkling white stars with elastic easing |
+| 🎆 Fireworks | `fireworks.js` | Bursting colorful fireworks |
+| 🎨 Test Color | `test_color.js` | Sequential RGBW color test |
+| 🔴 Fade Color | `fade_color.js` | Alternating red fade with green stripes |
+| 💚 The Matrix | `matrix.js` | Green cascading streams |
+| 🎨 The Matrix 4 colors | `matrix_4colors.js` | Multi-color matrix effect |
+| 🇩🇰 Dannebrog | `matrix_dannebrog.js` | Danish flag colors (red & white) |
+| 🎵 Dejlig er den himmel blå | `skyblue.js` | Musical note animation |
+
+### 📁 Adding New Built-in Sequences
+
+To add a new built-in sequence:
+
+1. Create `your_sequence.js` in `Sources/JulelysManager/SequencesJS/`
+2. Create `your_sequence.json` with metadata:
+   ```json
+   {
+       "id": "YourSequenceId",
+       "name": "Your Sequence Name",
+       "description": "Description of what it does"
+   }
+   ```
+3. Rebuild the project - the sequence will be auto-discovered!
 
 ---
 
@@ -342,9 +360,10 @@ Custom sequences are saved to:
                   │ Unix Socket (/tmp/julelys.sock)
 ┌─────────────────▼───────────────────────────────────────────┐
 │ JulelysManager (Daemon)                                     │
-│ - Sequence management                                       │
-│ - Custom JS sequences (SwiftJS)                             │
-│ - Persistence                                               │
+│ - Auto-discovers JS sequences from SequencesJS/             │
+│ - Executes JavaScript via SwiftJS engine                    │
+│ - Double-buffered SPI output (30 FPS)                       │
+│ - Persistence of active sequences                           │
 └─────────────────┬───────────────────────────────────────────┘
                   │ SPI (2.5 Mbps)
 ┌─────────────────▼───────────────────────────────────────────┐
@@ -352,6 +371,23 @@ Custom sequences are saved to:
 │ - Receives RGBW frames                                      │
 │ - Drives SK6812 LEDs                                        │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### 📂 Project Structure
+
+```
+Sources/
+├── JulelysManager/
+│   ├── SequencesJS/           # All sequences (auto-discovered)
+│   │   ├── stars.js           # Sequence code
+│   │   ├── stars.json         # Sequence metadata
+│   │   └── ...
+│   ├── Sequences/
+│   │   ├── JSSequence.swift   # JavaScript engine wrapper
+│   │   └── SequenceType.swift # Sequence protocol
+│   └── Controllers/
+│       └── SPIBasedLedController.swift  # Double-buffered SPI
+└── JulelysMCP/                # MCP server
 ```
 
 ---
