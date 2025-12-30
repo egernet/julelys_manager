@@ -19,9 +19,10 @@ Julelys Manager is a Swift-based command-line tool for controlling a programmabl
                   │ Unix Socket (/tmp/julelys.sock)
 ┌─────────────────▼───────────────────────────────────────────┐
 │ JulelysManager (Daemon)                                     │
-│ - Sequence management                                       │
-│ - Custom JS sequences (SwiftJS/elk)                         │
-│ - Persistence                                               │
+│ - Auto-discovers JS sequences from SequencesJS/             │
+│ - Executes JavaScript via SwiftJS engine                    │
+│ - Double-buffered SPI output (30 FPS)                       │
+│ - Persistence of active sequences                           │
 └─────────────────┬───────────────────────────────────────────┘
                   │ SPI (2.5 Mbps)
 ┌─────────────────▼───────────────────────────────────────────┐
@@ -63,22 +64,23 @@ Sources/
 │       ├── PreviewResponse.swift
 │       └── RunSequencesResponse.swift
 ├── JulelysManager/              # Main daemon
-│   ├── JulelysManager.swift          # Entry point, CLI args
+│   ├── JulelysManager.swift          # Entry point, CLI args, auto-discovery
 │   ├── JulelysDaemon.swift           # Unix socket server
 │   ├── Controllers/
 │   │   ├── LedControllerProtocol.swift
-│   │   ├── SPIBasedLedController.swift  # Real hardware
+│   │   ├── SPIBasedLedController.swift  # Double-buffered SPI output
 │   │   ├── ConsoleController.swift      # Terminal simulation
 │   │   ├── WindowController.swift       # macOS GUI
 │   │   └── PreviewController.swift      # HTML preview generation
 │   ├── Sequences/
-│   │   ├── SequenceType.swift           # Protocol
-│   │   ├── JSSequence.swift             # JavaScript engine
-│   │   ├── RainbowCycleSequence.swift
-│   │   ├── StarSequence.swift
-│   │   ├── FireworksSequence.swift
-│   │   ├── MatrixSequence.swift
-│   │   └── ...
+│   │   ├── SequenceType.swift           # Protocol definition
+│   │   └── JSSequence.swift             # JavaScript engine wrapper
+│   ├── SequencesJS/                     # All sequences (auto-discovered)
+│   │   ├── stars.js                     # Sequence code
+│   │   ├── stars.json                   # Sequence metadata
+│   │   ├── matrix.js
+│   │   ├── matrix.json
+│   │   └── ...                          # 10 built-in sequences
 │   └── Library/
 │       ├── Color.swift                  # RGBW color struct
 │       ├── Point.swift                  # x,y coordinate
@@ -107,14 +109,36 @@ protocol SequenceType {
 }
 ```
 
-### JavaScript API (for custom sequences)
+### JavaScript API (for sequences)
 ```javascript
 setPixelColor(r, g, b, w, x, y)  // Set pixel (RGBW 0-255)
-updatePixels()                   // Send frame to LEDs
+updatePixels()                   // Send frame to LEDs (triggers buffer swap)
 delay(ms)                        // Wait milliseconds
 matrix.width                     // Number of strings (8)
 matrix.height                    // LEDs per string (55)
 ```
+
+**Recommended helper function** (prevents UInt8 overflow errors):
+```javascript
+function clamp(val) {
+    return Math.max(0, Math.min(255, Math.floor(val)));
+}
+```
+
+### Built-in Sequences (10 total)
+All in `Sources/JulelysManager/SequencesJS/`:
+| File | Description |
+|------|-------------|
+| `twist.js` | Spiral pattern moving upward |
+| `rainbow_cycle.js` | Color wheel rotation |
+| `stars.js` | Twinkling stars with elastic easing |
+| `fireworks.js` | Bursting colorful fireworks |
+| `test_color.js` | Sequential RGBW test |
+| `fade_color.js` | Red/green alternating fade |
+| `matrix.js` | Green Matrix streams |
+| `matrix_4colors.js` | Multi-color Matrix |
+| `matrix_dannebrog.js` | Danish flag colors |
+| `skyblue.js` | "Dejlig er den himmel blå" music animation |
 
 ### MCP Tools
 | Tool | Description |
@@ -169,9 +193,32 @@ Test MCP tools by connecting with Claude Desktop or using stdin/stdout directly.
 7. Add daemon handler in `JulelysManager.startDaemon()`
 
 ### Adding a New Built-in Sequence
-1. Create new file in `Sources/JulelysManager/Sequences/`
-2. Implement `SequenceType` protocol
-3. Add to `loadAllSequence()` in `JulelysManager.swift`
+All sequences are JavaScript-based and auto-discovered:
 
-### Adding a New JS Sequence via MCP
+1. Create `your_sequence.js` in `Sources/JulelysManager/SequencesJS/`
+2. Create `your_sequence.json` with metadata:
+   ```json
+   {
+       "id": "YourSequenceId",
+       "name": "Your Sequence Name",
+       "description": "Description of what it does"
+   }
+   ```
+3. Rebuild - the sequence is auto-discovered from the SequencesJS folder
+
+**Important for JS sequences:**
+- Always use `clamp()` function when calculating color values to prevent UInt8 overflow
+- Use `delay(ms)` between frames to control animation speed
+- Call `updatePixels()` after setting all pixels for a frame
+
+### Adding a Custom Sequence via MCP
 Use the `createSequence` tool with name, description, and jsCode parameters.
+Custom sequences are stored in `~/Library/Application Support/Julelys/CustomSequences/` (macOS)
+or `~/Julelys/CustomSequences/` (Linux).
+
+### Double Buffering (SPIBasedLedController)
+The SPI controller uses double buffering to prevent tearing:
+- `backBuffer` - Sequences write pixels here
+- `frontBuffer` - SPI loop reads from here
+- Buffers are swapped atomically when `updatePixels()` is called
+- SPI loop runs at 30 FPS independently of sequence frame rate
