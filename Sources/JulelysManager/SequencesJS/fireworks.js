@@ -30,9 +30,8 @@ function easeInOutElastic(x) {
 let fireworks = [];
 let remainingToAdd = numberOfFireworks;
 
-// Current batch color (changes periodically)
-let currentColor = colors[Math.floor(Math.random() * colors.length)];
-let colorChangeCounter = 0;
+// Pick ONE random color for the entire sequence run (like original Swift version)
+const sequenceColor = colors[Math.floor(Math.random() * colors.length)];
 
 // Add a new firework at random position
 function addFirework() {
@@ -47,18 +46,11 @@ function addFirework() {
     // Don't add if a firework already exists at this position
     if (fireworks.some(f => f.x === point.x && f.y === point.y)) return;
 
-    // Change color occasionally
-    colorChangeCounter++;
-    if (colorChangeCounter > 50) {
-        currentColor = colors[Math.floor(Math.random() * colors.length)];
-        colorChangeCounter = 0;
-    }
-
     const factor = 0.1 + Math.random() * 0.1; // Random speed 0.1-0.2
     fireworks.push({
         x: point.x,
         y: point.y,
-        color: { ...currentColor },
+        color: { ...sequenceColor },
         time: 0,
         value: factor,
         factor: factor,
