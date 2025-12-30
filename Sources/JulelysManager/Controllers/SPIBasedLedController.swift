@@ -6,7 +6,9 @@ final class SPIBasedLedController: LedControllerProtocol {
     let matrixHeight: Int
     private(set) var sequences: [SequenceType]
 
-    private var buffer: [UInt8]
+    // Double buffering to prevent tearing
+    private var backBuffer: [UInt8]   // Sequences write here
+    private var frontBuffer: [UInt8]  // SPI sends this
     private let spi: SwiftSPI
     private let spiPath: String
     private let baudRate: Int
@@ -20,7 +22,9 @@ final class SPIBasedLedController: LedControllerProtocol {
         self.sequences = sequences
         self.spiPath = spiPath
         self.baudRate = baudRate
-        self.buffer = [UInt8](repeating: 0, count: matrixWidth * matrixHeight * 4)
+        let bufferSize = matrixWidth * matrixHeight * 4
+        self.backBuffer = [UInt8](repeating: 0, count: bufferSize)
+        self.frontBuffer = [UInt8](repeating: 0, count: bufferSize)
         self.spi = .init(spiPath: spiPath, baudRate: baudRate)
     }
 
@@ -45,6 +49,13 @@ final class SPIBasedLedController: LedControllerProtocol {
         self.sequences = sequences
     }
 
+    /// Swap back and front buffers atomically
+    private func swapBuffers() {
+        lock.lock()
+        swap(&backBuffer, &frontBuffer)
+        lock.unlock()
+    }
+
     func runColorLoopMe() {
         let colors: [(r: UInt8, g: UInt8, b: UInt8, w: UInt8)] = [
             (255, 0, 0, 0),   // Rød
@@ -55,25 +66,21 @@ final class SPIBasedLedController: LedControllerProtocol {
 
         while isRunning {
             for color in colors {
-                let frame = createFrame(red: color.r, green: color.g, blue: color.b, white: color.w)
-                
-                lock.lock()
-                buffer = frame
-                lock.unlock()
+                // Write to back buffer
+                for i in 0..<(matrixWidth * matrixHeight) {
+                    let index = i * 4
+                    backBuffer[index + 0] = color.r
+                    backBuffer[index + 1] = color.g
+                    backBuffer[index + 2] = color.b
+                    backBuffer[index + 3] = color.w
+                }
+
+                // Swap buffers after complete frame
+                swapBuffers()
 
                 Thread.sleep(forTimeInterval: 0.5)
             }
         }
-    }
-
-    func createFrame(red: UInt8, green: UInt8, blue: UInt8, white: UInt8) -> [UInt8] {
-        var frameData: [UInt8] = []
-        for _ in 0..<matrixWidth {
-            for _ in 0..<matrixHeight {
-                frameData.append(contentsOf: [red, green, blue, white])
-            }
-        }
-        return frameData
     }
 
     func runSequences() {
@@ -87,30 +94,29 @@ final class SPIBasedLedController: LedControllerProtocol {
     }
 
     private func setPixel(x: Int, y: Int, color: Color) {
+        // x = row position (0 to height-1)
+        // y = string/column (0 to width-1)
         let col = x
         let row = y
 
-        let indexStart = (row * matrixHeight * 4)
-        let index = indexStart + (col * 4)
+        let index = (row * matrixHeight * 4) + (col * 4)
 
-        // print("row: \(row) col: \(col), index: \(index)")
-
-        guard index >= 0, index < (buffer.count - 4) else {
+        guard index >= 0, index + 3 < backBuffer.count else {
             return
         }
 
-        lock.lock()
-        buffer[index + 0] = color.red
-        buffer[index + 1] = color.green
-        buffer[index + 2] = color.blue
-        buffer[index + 3] = color.white
-        lock.unlock()
+        // Write to back buffer (no lock needed - single writer)
+        backBuffer[index + 0] = color.red
+        backBuffer[index + 1] = color.green
+        backBuffer[index + 2] = color.blue
+        backBuffer[index + 3] = color.white
     }
 
     private func spiLoop() {
         while isRunning {
+            // Read from front buffer with lock
             lock.lock()
-            let frame = buffer
+            let frame = frontBuffer
             lock.unlock()
 
             spi.spiWrite(buffer: frame)
@@ -126,7 +132,10 @@ final class SPIBasedLedController: LedControllerProtocol {
 }
 
 extension SPIBasedLedController: SequenceDelegate {
-    func sequenceUpdatePixels(_ sequence: SequenceType) {}
+    func sequenceUpdatePixels(_ sequence: SequenceType) {
+        // Swap buffers when sequence has finished writing a complete frame
+        swapBuffers()
+    }
 
     func sequenceSetPixelColor(_ sequence: SequenceType, point: Point, color: Color) {
         setPixel(x: point.x, y: point.y, color: color)
