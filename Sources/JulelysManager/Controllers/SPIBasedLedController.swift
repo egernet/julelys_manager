@@ -113,11 +113,18 @@ final class SPIBasedLedController: LedControllerProtocol {
     }
 
     private func spiLoop() {
+        let bufferSize = matrixWidth * matrixHeight * 4
+
         while isRunning {
-            // Read from front buffer with lock
+            // Copy front buffer while holding lock
             lock.lock()
-            let frame = frontBuffer
+            let frame = Array(frontBuffer)
             lock.unlock()
+
+            // Verify we got the right size
+            guard frame.count == bufferSize else {
+                continue
+            }
 
             spi.spiWrite(buffer: frame)
 
