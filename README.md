@@ -58,7 +58,113 @@ swift run JulelysManager --mode real --matrixWidth 8 --matrixHeight 55
 
 ## 🤖 MCP Integration
 
-The project includes an MCP server (`JulelysMCP`) that allows AI assistants like Claude to control your Christmas lights.
+The project includes two MCP servers for AI integration:
+
+| Server | Transport | Use Case |
+|--------|-----------|----------|
+| `JulelysMCP` | stdio | Local setup, SSH tunneling |
+| `JulelysWebMCP` | HTTP | Remote access, web-based AI clients |
+
+---
+
+### 🌐 Web-based MCP (Recommended for Linux/Remote)
+
+`JulelysWebMCP` provides MCP over HTTP, perfect for remote AI access without SSH.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────┐
+│ Claude / AI (anywhere)                  │
+└─────────────────┬───────────────────────┘
+                  │ HTTP (MCP Streamable HTTP)
+                  │ POST/GET http://server:8080/mcp
+┌─────────────────▼───────────────────────┐
+│ JulelysWebMCP (Hummingbird)             │
+│ - MCP JSON-RPC over HTTP                │
+│ - CORS enabled                          │
+│ - Session management                    │
+└─────────────────┬───────────────────────┘
+                  │ Unix Socket
+┌─────────────────▼───────────────────────┐
+│ JulelysManager (daemon)                 │
+└─────────────────────────────────────────┘
+```
+
+#### Setup
+
+**1️⃣ Build and start on your server (Linux/Pi)**
+
+```bash
+swift build -c release
+
+# Start daemon (in one terminal or screen session)
+.build/release/JulelysManager --mode real
+
+# Start web MCP server (in another terminal)
+.build/release/JulelysWebMCP
+```
+
+You should see:
+```
+JulelysWebMCP starting on http://0.0.0.0:8080
+MCP endpoint: POST/GET http://0.0.0.0:8080/mcp
+```
+
+**2️⃣ Configure your AI client**
+
+For AI clients that support MCP Streamable HTTP transport:
+
+```json
+{
+  "mcpServers": {
+    "julelys": {
+      "url": "http://your-server:8080/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+#### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/mcp` | POST | MCP JSON-RPC requests |
+| `/mcp` | GET | SSE for server notifications |
+| `/mcp` | OPTIONS | CORS preflight |
+
+#### Auto-start (systemd)
+
+Create `/etc/systemd/system/julelys-web.service`:
+
+```ini
+[Unit]
+Description=Julelys Web MCP Server
+After=network.target julelys.service
+Requires=julelys.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/julelys_manager
+ExecStart=/home/pi/julelys_manager/.build/release/JulelysWebMCP
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable it:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable julelys-web
+sudo systemctl start julelys-web
+```
+
+---
 
 ### 🏠 Local Setup (Same Machine)
 
@@ -352,21 +458,24 @@ To add a new built-in sequence:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Claude / AI Assistant                                       │
-└─────────────────┬───────────────────────────────────────────┘
-                  │ MCP (stdio)
-┌─────────────────▼───────────────────────────────────────────┐
-│ JulelysMCP (MCP Server)                                     │
-└─────────────────┬───────────────────────────────────────────┘
-                  │ Unix Socket (/tmp/julelys.sock)
-┌─────────────────▼───────────────────────────────────────────┐
+└───────────┬─────────────────────────────┬───────────────────┘
+            │ MCP (stdio/SSH)             │ MCP (HTTP)
+┌───────────▼───────────┐     ┌───────────▼───────────────────┐
+│ JulelysMCP            │     │ JulelysWebMCP                 │
+│ (stdio transport)     │     │ (HTTP transport, port 8080)   │
+└───────────┬───────────┘     └───────────┬───────────────────┘
+            │                             │
+            └──────────────┬──────────────┘
+                           │ Unix Socket (/tmp/julelys.sock)
+┌──────────────────────────▼──────────────────────────────────┐
 │ JulelysManager (Daemon)                                     │
 │ - Auto-discovers JS sequences from SequencesJS/             │
 │ - Executes JavaScript via SwiftJS engine                    │
 │ - Double-buffered SPI output (30 FPS)                       │
 │ - Persistence of active sequences                           │
-└─────────────────┬───────────────────────────────────────────┘
-                  │ SPI (2.5 Mbps)
-┌─────────────────▼───────────────────────────────────────────┐
+└─────────────────────────┬───────────────────────────────────┘
+                          │ SPI (2.5 Mbps)
+┌─────────────────────────▼───────────────────────────────────┐
 │ ESP32 (julelys_pcb_v2)                                      │
 │ - Receives RGBW frames                                      │
 │ - Drives SK6812 LEDs                                        │
@@ -387,7 +496,8 @@ Sources/
 │   │   └── SequenceType.swift # Sequence protocol
 │   └── Controllers/
 │       └── SPIBasedLedController.swift  # Double-buffered SPI
-└── JulelysMCP/                # MCP server
+├── JulelysMCP/                # MCP server (stdio)
+└── JulelysWebMCP/             # MCP server (HTTP)
 ```
 
 ---
@@ -425,10 +535,17 @@ swift build -c release
 .build/release/JulelysManager --mode real
 ```
 
-### 🤖 Run MCP Server
+### 🤖 Run MCP Server (stdio)
 
 ```bash
 .build/release/JulelysMCP
+```
+
+### 🌐 Run MCP Server (HTTP)
+
+```bash
+.build/release/JulelysWebMCP
+# Starts on http://0.0.0.0:8080
 ```
 
 ---
@@ -437,7 +554,7 @@ swift build -c release
 
 | Platform | Version |
 |----------|---------|
-| 🍎 macOS | 13+ |
+| 🍎 macOS | 14+ |
 | 🐧 Linux | Ubuntu 22.04+ / Raspbian |
 | 🦅 Swift | 5.10+ |
 
@@ -455,6 +572,7 @@ Hardware:
 | [SwiftSPI](https://github.com/egernet/swift_spi) | SPI communication |
 | [SwiftJS](https://github.com/egernet/SwiftJS) | JavaScript engine |
 | [swift-sdk (MCP)](https://github.com/modelcontextprotocol/swift-sdk) | Model Context Protocol |
+| [Hummingbird](https://github.com/hummingbird-project/hummingbird) | HTTP server for WebMCP |
 
 ---
 
