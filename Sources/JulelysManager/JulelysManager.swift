@@ -8,6 +8,7 @@ struct JulelysManager: ParsableCommand {
         case real
         case app
         case console
+        case stream
 
         static func mode(_ string: String?) -> Mode {
             switch string {
@@ -17,6 +18,8 @@ struct JulelysManager: ParsableCommand {
                 return .app
             case Mode.console.rawValue:
                 return .console
+            case Mode.stream.rawValue:
+                return .stream
             default:
                 return .real
             }
@@ -30,8 +33,14 @@ struct JulelysManager: ParsableCommand {
         subcommands: []
     )
 
-    @Option(help: "Executes mode: [real, app, console]")
+    @Option(help: "Executes mode: [real, app, console, stream]")
     var mode: String = "real"
+
+    @Option(help: "Host to stream frames to, used by --mode stream")
+    var host: String = "192.168.1.50"
+
+    @Option(help: "UDP port to stream frames to, used by --mode stream")
+    var port: UInt16 = 2412
 
     @Option(help: "Matrix width")
     var matrixWidth: Int = 8
@@ -80,6 +89,14 @@ struct JulelysManager: ParsableCommand {
                 sequences: activeSequences.map { $0.sequence },
                 matrixWidth: matrixWidth,
                 matrixHeight: matrixHeight
+            )
+        case .stream:
+            controller = NetworkLedController(
+                sequences: activeSequences.map { $0.sequence },
+                matrixWidth: matrixWidth,
+                matrixHeight: matrixHeight,
+                host: host,
+                port: port
             )
         }
 
