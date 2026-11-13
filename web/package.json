@@ -1,0 +1,15 @@
+{
+  "name": "julelys-web",
+  "private": true,
+  "type": "module",
+  "description": "Chat with Claude to write Julelys sequences, with a live preview",
+  "scripts": {
+    "start": "node server.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.325"
+  }
+}

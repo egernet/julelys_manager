@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Julelys</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎄</text></svg>">
+<style>
+  :root {
+    --bg: #0d1210;
+    --panel: #151c19;
+    --panel-2: #1c2521;
+    --line: #2a3530;
+    --text: #e8efe9;
+    --muted: #8fa198;
+    --accent: #d8413b;
+    --accent-2: #e6b450;
+    --green: #3f9b62;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+  input, textarea, select {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    width: 100%;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--green); outline-offset: -1px; }
+
+  .app {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(320px, 520px);
+    grid-template-rows: auto 1fr;
+    height: 100%;
+  }
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  .now { color: var(--muted); font-size: 13px; flex: 1; min-width: 200px; }
+  .now b { color: var(--text); font-weight: 500; }
+  header .tools { display: flex; gap: 8px; align-items: center; }
+  header select { width: auto; max-width: 220px; padding: 6px 8px; }
+
+  /* Chat */
+  .chat { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+  .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 760px; padding: 10px 14px; border-radius: var(--radius); white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: #24352c; }
+  .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+  .msg.error { align-self: flex-start; background: #3a1d1c; border: 1px solid #6b2a27; }
+  .msg code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .msg details { margin-top: 8px; white-space: normal; }
+  .msg summary { cursor: pointer; color: var(--accent-2); font-size: 13px; }
+  .msg pre { background: var(--bg); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre; margin: 8px 0 0; }
+  .welcome { color: var(--muted); max-width: 620px; margin: auto; text-align: center; }
+  .welcome h2 { color: var(--text); font-weight: 600; }
+  .ideas { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+  .ideas button { font-size: 13px; }
+  .composer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); }
+  .composer textarea { resize: none; height: 64px; }
+  .typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Preview */
+  .side { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: #090d0b; }
+  .stage { position: relative; flex: 1; min-height: 380px; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .stage .badge {
+    position: absolute; top: 12px; left: 12px; font-size: 12px; color: var(--muted);
+    background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 6px;
+  }
+  .stage .badge.err { color: #ff8a80; }
+  .controls { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .controls input[type=range] { width: 90px; padding: 0; }
+  .controls input[type=checkbox] { width: auto; }
+  .deploy { padding: 14px 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+  .deploy .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .deploy .row button { flex: 1; }
+  .deploy .note { font-size: 13px; color: var(--muted); min-height: 1.5em; }
+  .code { border-top: 1px solid var(--line); padding: 10px 16px 16px; }
+  .code summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .code textarea { margin-top: 8px; height: 260px; font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre; }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto auto auto; height: auto; }
+    .chat { border-right: 0; border-bottom: 1px solid var(--line); }
+    .messages { max-height: 55vh; }
+    .stage { min-height: 460px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🎄 Julelys</h1>
+    <div class="now" id="now">Henter status…</div>
+    <div class="tools">
+      <select id="open" aria-label="Åbn en sekvens">
+        <option value="">Åbn sekvens…</option>
+      </select>
+      <button id="off">Sluk træet</button>
+    </div>
+  </header>
+
+  <section class="chat">
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <h2>Hvad skal træet vise?</h2>
+        <p>Beskriv en sekvens, så skriver Claude koden og viser den på træet til højre.
+          Ret den til med flere beskeder. Først når du trykker <b>Send til træet</b>, kommer den ud på lyset.</p>
+        <div class="ideas">
+          <button>Sne der falder langsomt ned</button>
+          <button>Juletræ med kugler og stjerne i toppen</button>
+          <button>Varme stearinlys der blafrer</button>
+          <button>Nordlys i grøn og lilla</button>
+          <button>Rød og hvid slikstok-spiral</button>
+        </div>
+      </div>
+    </div>
+    <form class="composer" id="composer">
+      <textarea id="input" placeholder="Fx: lav sne der falder, og lad toppen lyse guld" autofocus></textarea>
+      <button class="primary" id="send" type="submit">Send</button>
+    </form>
+  </section>
+
+  <aside class="side">
+    <div class="stage">
+      <canvas id="tree"></canvas>
+      <div class="badge" id="badge">Ingen sekvens endnu</div>
+    </div>
+    <div class="controls">
+      <button id="play" disabled>⏹ Stop</button>
+      <button id="restart" disabled>↻ Forfra</button>
+      <label>Hastighed <input type="range" id="speed" min="25" max="300" value="100"> <span id="speedLabel">1.0x</span></label>
+      <label><input type="checkbox" id="rotate" checked> Rotér</label>
+      <label><input type="checkbox" id="flat"> Flad</label>
+    </div>
+    <div class="deploy">
+      <input id="name" placeholder="Navn på sekvensen">
+      <input id="description" placeholder="Beskrivelse">
+      <div class="row">
+        <button class="primary" id="deployOnly" disabled>Send til træet</button>
+        <button id="deployAdd" disabled>Tilføj til rotationen</button>
+      </div>
+      <div class="note" id="deployNote"></div>
+    </div>
+    <details class="code">
+      <summary>Kode</summary>
+      <textarea id="code" spellcheck="false" placeholder="Koden vises her"></textarea>
+      <div class="row" style="margin-top:8px"><button id="runCode">Kør koden</button></div>
+    </details>
+  </aside>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
