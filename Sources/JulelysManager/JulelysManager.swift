@@ -338,12 +338,13 @@ struct JulelysManager: ParsableCommand {
                     // Check if it exists as a built-in sequence
                     let sequenceList = allSequences()
                     if let info = sequenceList.first(where: { $0.name == name }) {
+                        let jsCode = BuiltinSequenceMetadata.code(named: name)
                         return SequenceCodeResponse(
                             name: info.name,
                             description: info.description,
-                            jsCode: nil,
+                            jsCode: jsCode,
                             isCustom: false,
-                            error: "Built-in sequences don't have viewable JS code"
+                            error: jsCode == nil ? "Could not read the built-in sequence's JS file" : nil
                         )
                     }
 
@@ -413,6 +414,23 @@ struct BuiltinSequenceMetadata: Codable {
     let id: String
     let name: String
     let description: String
+
+    /// JavaScript of the built-in sequence with this name, read from the bundle.
+    static func code(named name: String) -> String? {
+        guard let bundlePath = Bundle.module.path(forResource: "SequencesJS", ofType: nil),
+              let files = try? FileManager.default.contentsOfDirectory(
+                at: URL(fileURLWithPath: bundlePath), includingPropertiesForKeys: nil
+              ) else { return nil }
+
+        for jsonFile in files where jsonFile.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: jsonFile),
+                  let metadata = try? JSONDecoder().decode(Self.self, from: data),
+                  metadata.name == name else { continue }
+            let jsFile = jsonFile.deletingPathExtension().appendingPathExtension("js")
+            return try? String(contentsOf: jsFile, encoding: .utf8)
+        }
+        return nil
+    }
 }
 
 struct SequenceData {
