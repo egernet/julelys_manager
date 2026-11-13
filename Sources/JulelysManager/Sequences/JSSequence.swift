@@ -47,10 +47,14 @@ final class JSSequence: SequenceType {
         self.ctx = context
 
         // --- delay(ms)
-        let delayFn = JSObject(newFunctionIn: context) { context, this, arguments in
+        // delay() and updatePixels() throw once the sequence is stopped, so a script
+        // with an endless loop still ends when another sequence is selected.
+        let delayFn = JSObject(newFunctionIn: context) { [weak self] context, this, arguments in
+            try self?.abortIfStopped(context)
             if let ms = arguments.first?.doubleValue {
                 Thread.sleep(forTimeInterval: ms / 1000)
             }
+            try self?.abortIfStopped(context)
             return .init(undefinedIn: context)
         }
 
@@ -78,6 +82,7 @@ final class JSSequence: SequenceType {
 
         // --- updatePixels()
         let updateFn = JSObject(newFunctionIn: context) { [weak self] context, this, _ in
+            try self?.abortIfStopped(context)
             self?.updatePixels()
             return .init(undefinedIn: context)
         }
@@ -99,7 +104,14 @@ final class JSSequence: SequenceType {
         context.global["matrix"].defineProperty("height", height)
     }
 
+    private func abortIfStopped(_ context: JSContext) throws {
+        if stop {
+            throw JSObject(newErrorFromMessage: "Sequence stopped", in: context)
+        }
+    }
+
     func runSequence() {
+        stop = false
         setupJS()
 
         guard let ctx, let code else { return }

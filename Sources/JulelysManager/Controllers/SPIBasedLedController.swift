@@ -5,6 +5,7 @@ final class SPIBasedLedController: LedControllerProtocol {
     let matrixWidth: Int
     let matrixHeight: Int
     private(set) var sequences: [SequenceType]
+    private var generation = 0
 
     // Double buffering to prevent tearing
     private var backBuffer: [UInt8]   // Sequences write here
@@ -45,6 +46,7 @@ final class SPIBasedLedController: LedControllerProtocol {
         for var sequence in self.sequences {
             sequence.stop = true
         }
+        generation &+= 1
         
         self.sequences = sequences
     }
@@ -86,7 +88,10 @@ final class SPIBasedLedController: LedControllerProtocol {
     func runSequences() {
         while isRunning {
             let sequences = self.sequences
+            let started = generation
             for var sequence in sequences {
+                // Stop walking the old list as soon as a new one is set
+                guard generation == started else { break }
                 sequence.delegate = self
                 sequence.runSequence()
             }
