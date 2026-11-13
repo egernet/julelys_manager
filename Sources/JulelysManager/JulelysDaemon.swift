@@ -4,6 +4,10 @@ import Foundation
 struct JulelysDaemon {
     enum SockErr: Error { case posix(String) }
 
+    /// Upper bound for one request, so a client that never ends its message
+    /// cannot grow the buffer without limit.
+    static let maxRequestBytes = 1 << 20
+
     static func start(request: (RequestCommand) -> Codable ) async throws {
         let socketPath = "/tmp/julelys.sock"
 
@@ -57,16 +61,25 @@ struct JulelysDaemon {
             let clientFD = accept(fd, &clientAddr, &len)
             guard clientFD >= 0 else { continue }
 
-            // Læs besked fra klient
-            var buffer = [UInt8](repeating: 0, count: 2048)
-            let bytesRead = read(clientFD, &buffer, buffer.count)
-            guard bytesRead > 0 else {
+            // Read the request. Large ones (createSequence with a long script)
+            // arrive in several chunks, so read until a newline, EOF or a
+            // complete JSON object - MCP clients send neither newline nor EOF.
+            var received = [UInt8]()
+            var buffer = [UInt8](repeating: 0, count: 65536)
+            while received.count < Self.maxRequestBytes {
+                let bytesRead = read(clientFD, &buffer, buffer.count)
+                guard bytesRead > 0 else { break }
+                received.append(contentsOf: buffer[0..<bytesRead])
+                if received.last == UInt8(ascii: "\n") { break }
+                if (try? JSONSerialization.jsonObject(with: Data(received))) != nil { break }
+            }
+            guard !received.isEmpty else {
                 close(clientFD)
                 continue
             }
 
-            let msg = String(decoding: buffer[0..<bytesRead], as: UTF8.self)
-            fputs("📩 Modtog: \(msg)\n", stderr)
+            let msg = String(decoding: received, as: UTF8.self)
+            fputs("📩 Modtog: \(msg.prefix(200))\n", stderr)
 
             // Behandl JSON request
             let responseData: Data

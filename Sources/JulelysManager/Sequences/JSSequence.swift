@@ -65,12 +65,16 @@ final class JSSequence: SequenceType {
             guard let self else { return .init(undefinedIn: context) }
             guard args.count >= 6 else { return .init(undefinedIn: context) }
 
-            let r = UInt8(args[0].doubleValue ?? 0)
-            let g = UInt8(args[1].doubleValue ?? 0)
-            let b = UInt8(args[2].doubleValue ?? 0)
-            let w = UInt8(args[3].doubleValue ?? 0)
-            let x = Int(args[4].doubleValue ?? 0)
-            let y = Int(args[5].doubleValue ?? 0)
+            // Scripts can pass anything; UInt8(_:) and Int(_:) trap on values out
+            // of range or NaN, which would take the whole manager down.
+            let r = Self.colorByte(args[0].doubleValue)
+            let g = Self.colorByte(args[1].doubleValue)
+            let b = Self.colorByte(args[2].doubleValue)
+            let w = Self.colorByte(args[3].doubleValue)
+            guard let x = Self.index(args[4].doubleValue),
+                  let y = Self.index(args[5].doubleValue) else {
+                return .init(undefinedIn: context)
+            }
 
             let color = Color(red: r, green: g, blue: b, white: w)
             let point = Point(x: x, y: y)
@@ -102,6 +106,18 @@ final class JSSequence: SequenceType {
 
         context.global["matrix"].defineProperty("width", width)
         context.global["matrix"].defineProperty("height", height)
+    }
+
+    /// Clamps a script value to 0...255, rounding down like `Math.floor`.
+    private static func colorByte(_ value: Double?) -> UInt8 {
+        guard let value, value.isFinite else { return 0 }
+        return UInt8(min(255, max(0, value.rounded(.down))))
+    }
+
+    /// Converts a script coordinate, or nil when it cannot be a valid index.
+    private static func index(_ value: Double?) -> Int? {
+        guard let value, value.isFinite, abs(value) < 1_000_000 else { return nil }
+        return Int(value.rounded(.down))
     }
 
     private func abortIfStopped(_ context: JSContext) throws {
