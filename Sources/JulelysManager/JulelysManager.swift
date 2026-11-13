@@ -42,6 +42,9 @@ struct JulelysManager: ParsableCommand {
     @Option(help: "UDP port to stream frames to, used by --mode stream")
     var port: UInt16 = 2412
 
+    @Option(help: "Seconds each sequence runs when several are active, used by --mode stream")
+    var slotSeconds: Double = 60
+
     @Option(help: "Matrix width")
     var matrixWidth: Int = 8
 
@@ -96,7 +99,8 @@ struct JulelysManager: ParsableCommand {
                 matrixWidth: matrixWidth,
                 matrixHeight: matrixHeight,
                 host: host,
-                port: port
+                port: port,
+                slotSeconds: slotSeconds
             )
         }
 

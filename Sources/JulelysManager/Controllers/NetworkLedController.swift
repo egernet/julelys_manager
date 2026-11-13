@@ -26,6 +26,8 @@ final class NetworkLedController: LedControllerProtocol {
     let matrixHeight: Int
     private(set) var sequences: [SequenceType]
     private var generation = 0
+    private var slotToken = 0
+    private let slotSeconds: TimeInterval
 
     // Double buffering to prevent tearing
     private var backBuffer: [UInt8]   // Sequences write here
@@ -48,13 +50,15 @@ final class NetworkLedController: LedControllerProtocol {
          matrixHeight: Int,
          host: String,
          port: UInt16 = 2412,
-         framesPerSecond: Double = 30) {
+         framesPerSecond: Double = 30,
+         slotSeconds: TimeInterval = 60) {
         self.matrixWidth = matrixWidth
         self.matrixHeight = matrixHeight
         self.sequences = sequences
         self.host = host
         self.port = port
         self.framesPerSecond = framesPerSecond
+        self.slotSeconds = slotSeconds
 
         let bufferSize = matrixWidth * matrixHeight * 4
         self.backBuffer = [UInt8](repeating: 0, count: bufferSize)
@@ -83,6 +87,7 @@ final class NetworkLedController: LedControllerProtocol {
             sequence.stop = true
         }
         generation &+= 1
+        slotToken &+= 1
 
         self.sequences = sequences
     }
@@ -95,7 +100,26 @@ final class NetworkLedController: LedControllerProtocol {
                 // Stop walking the old list as soon as a new one is set
                 guard generation == started else { break }
                 sequence.delegate = self
-                sequence.runSequence()
+
+                guard sequences.count > 1 else {
+                    sequence.runSequence()
+                    continue
+                }
+
+                // Rotation: give every sequence the same slot. Short scripts are
+                // repeated until the slot is used up, endless ones are stopped.
+                let deadline = Date().addingTimeInterval(slotSeconds)
+                slotToken &+= 1
+                let token = slotToken
+                let current = sequence
+                DispatchQueue.global().asyncAfter(deadline: .now() + slotSeconds) { [weak self] in
+                    guard let self, self.slotToken == token else { return }
+                    var running = current
+                    running.stop = true
+                }
+                repeat {
+                    sequence.runSequence()
+                } while generation == started && Date() < deadline
             }
         }
     }
