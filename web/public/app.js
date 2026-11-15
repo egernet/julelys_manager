@@ -36,6 +36,7 @@ async function refreshStatus() {
     state.width = status.matrixWidth || state.width;
     state.height = status.matrixHeight || state.height;
     const active = (status.activeSequences || []).filter((n) => n !== "Sluk");
+    state.active = active;
     state.isOff = active.length === 0;
     $("now").innerHTML = active.length
       ? `På træet nu: <b>${active.map(escapeHtml).join("</b>, <b>")}</b>`
@@ -228,6 +229,7 @@ function setCode(code, { fromChat }) {
   if (!fromChat) state.codeChanged = true;
   $("deployOnly").disabled = false;
   $("deployAdd").disabled = false;
+  $("deployPlaylist").disabled = false;
   startPreview();
 }
 
@@ -370,39 +372,184 @@ requestAnimationFrame(draw);
 
 // ------------------------------------------------------------------ deploy ---
 
-async function deploy(mode) {
+async function deploy(mode, playlist) {
   const name = $("name").value.trim();
   if (!name) {
     $("deployNote").textContent = "Giv sekvensen et navn først.";
     $("name").focus();
     return;
   }
-  if (state.sequences.includes(name) && !confirm(`“${name}” findes allerede. Vil du erstatte den?`)) return;
 
-  $("deployOnly").disabled = $("deployAdd").disabled = true;
-  $("deployNote").textContent = "Sender til træet…";
+  $("deployOnly").disabled = $("deployAdd").disabled = $("deployPlaylist").disabled = true;
+  $("deployNote").textContent = mode === "save" ? "Gemmer…" : "Sender til træet…";
   try {
+    // The server never overwrites: a taken name becomes "Navn (2)".
     const result = await api("/api/deploy", {
       name,
       description: $("description").value.trim(),
       code: state.code,
       mode,
     });
-    $("deployNote").textContent = mode === "add"
-      ? `“${name}” er med i rotationen (${result.active.length} sekvenser).`
-      : `“${name}” kører nu på træet.`;
+    const saved = result.name;
+    const renamed = result.renamed ? ` Navnet var taget, så den er gemt som “${saved}”; den gamle er urørt.` : "";
+    if (playlist) {
+      const lists = await loadPlaylists();
+      const target = lists.find((p) => p.name === playlist);
+      await api("/api/playlists", { name: playlist, sequences: [...(target?.sequences ?? []), saved] });
+      await loadPlaylists();
+      $("deployNote").textContent = `“${saved}” er gemt i playlisten “${playlist}”.${renamed}`;
+    } else {
+      $("deployNote").textContent = (mode === "add"
+        ? `“${saved}” er med i rotationen (${result.active.length} sekvenser).`
+        : `“${saved}” kører nu på træet.`) + renamed;
+    }
+    $("name").value = saved;
     refreshSequences();
     refreshStatus();
   } catch (err) {
-    $("deployNote").textContent = `Kunne ikke sende: ${err.message}`;
+    $("deployNote").textContent = `Kunne ikke gemme: ${err.message}`;
   } finally {
-    $("deployOnly").disabled = $("deployAdd").disabled = false;
+    $("deployOnly").disabled = $("deployAdd").disabled = $("deployPlaylist").disabled = !state.code;
   }
 }
 
 $("deployOnly").addEventListener("click", () => deploy("only"));
 $("deployAdd").addEventListener("click", () => deploy("add"));
+$("deployPlaylist").addEventListener("change", async (e) => {
+  let target = e.target.value;
+  e.target.value = "";
+  if (!target) return;
+  if (target === "__new__") {
+    target = (prompt("Navn på den nye playliste") || "").trim();
+    if (!target) return;
+  }
+  deploy("save", target);
+});
+
+// --------------------------------------------------------------- playlists ---
+
+const pl = { lists: [], editing: null, items: [] };
+
+async function loadPlaylists() {
+  try {
+    pl.lists = (await api("/api/playlists")).playlists;
+  } catch { pl.lists = []; }
+  renderPlaylists();
+  const select = $("deployPlaylist");
+  select.length = 1;
+  for (const p of pl.lists) select.add(new Option(`Gem i “${p.name}”`, p.name));
+  select.add(new Option("Gem i en ny playliste…", "__new__"));
+  return pl.lists;
+}
+
+function sameList(a, b) {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+function renderPlaylists() {
+  const box = $("plList");
+  box.innerHTML = "";
+  if (!pl.lists.length) {
+    box.innerHTML = '<div class="pl-empty">Ingen playlister endnu. Lav en med “Ny playliste”.</div>';
+    return;
+  }
+  for (const p of pl.lists) {
+    const playing = sameList(p.sequences, state.active || []);
+    const card = document.createElement("div");
+    card.className = "pl-card" + (playing ? " playing" : "");
+    card.innerHTML = `
+      <div class="top"><b>${escapeHtml(p.name)}</b>
+        ${playing ? '<span class="badge">kører nu</span>' : ""}
+        <button class="primary" data-act="play">▶ Afspil</button>
+        <button data-act="edit">Ret</button>
+        <button data-act="delete">Slet</button></div>
+      <div class="seqs">${p.sequences.map(escapeHtml).join(" → ")}</div>`;
+    card.querySelector('[data-act="play"]').onclick = () => playPlaylist(p.name);
+    card.querySelector('[data-act="edit"]').onclick = () => editPlaylist(p);
+    card.querySelector('[data-act="delete"]').onclick = async () => {
+      if (!confirm(`Slet playlisten “${p.name}”? Sekvenserne bliver liggende.`)) return;
+      await api("/api/playlists/delete", { name: p.name });
+      loadPlaylists();
+    };
+    box.appendChild(card);
+  }
+}
+
+async function playPlaylist(name) {
+  $("plNote").textContent = `Starter “${name}”…`;
+  try {
+    const r = await api("/api/playlists/play", { name });
+    $("plNote").textContent = `“${name}” kører nu (${r.active.length} sekvenser)` +
+      (r.missing.length ? `. Findes ikke længere: ${r.missing.join(", ")}` : ".");
+    await refreshStatus();
+    renderPlaylists();
+  } catch (err) {
+    $("plNote").textContent = `Kunne ikke afspille: ${err.message}`;
+  }
+}
+
+function editPlaylist(p, items) {
+  pl.editing = p ? p.name : null;
+  pl.items = items ?? (p ? [...p.sequences] : []);
+  $("plName").value = p ? p.name : "";
+  $("plEdit").hidden = false;
+  $("plNote").textContent = "";
+  const add = $("plAdd");
+  add.length = 1;
+  for (const name of state.sequences.filter((n) => n !== "Sluk")) add.add(new Option(name, name));
+  renderItems();
+  $("plName").focus();
+}
+
+function renderItems() {
+  const ul = $("plItems");
+  ul.innerHTML = pl.items.length ? "" : '<li class="pl-empty">Tilføj sekvenser nedenfor. De kører i den rækkefølge.</li>';
+  pl.items.forEach((name, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${i + 1}. ${escapeHtml(name)}</span>
+      <button data-d="-1" ${i === 0 ? "disabled" : ""} aria-label="Flyt op">↑</button>
+      <button data-d="1" ${i === pl.items.length - 1 ? "disabled" : ""} aria-label="Flyt ned">↓</button>
+      <button data-x aria-label="Fjern">✕</button>`;
+    for (const b of li.querySelectorAll("[data-d]"))
+      b.onclick = () => { const j = i + Number(b.dataset.d); [pl.items[i], pl.items[j]] = [pl.items[j], pl.items[i]]; renderItems(); };
+    li.querySelector("[data-x]").onclick = () => { pl.items.splice(i, 1); renderItems(); };
+    ul.appendChild(li);
+  });
+}
+
+async function savePlaylist(andPlay) {
+  const name = $("plName").value.trim();
+  try {
+    await api("/api/playlists", { name, oldName: pl.editing ?? name, sequences: pl.items });
+    $("plEdit").hidden = true;
+    await loadPlaylists();
+    if (andPlay) await playPlaylist(name);
+    else $("plNote").textContent = `“${name}” er gemt.`;
+  } catch (err) {
+    $("plNote").textContent = err.message;
+  }
+}
+
+$("plAdd").addEventListener("change", (e) => {
+  if (e.target.value) pl.items.push(e.target.value);
+  e.target.value = "";
+  renderItems();
+});
+$("plNew").addEventListener("click", () => editPlaylist(null));
+$("plFromNow").addEventListener("click", () => editPlaylist(null, [...(state.active || [])]));
+$("plSave").addEventListener("click", () => savePlaylist(false));
+$("plSavePlay").addEventListener("click", () => savePlaylist(true));
+$("plCancel").addEventListener("click", () => { $("plEdit").hidden = true; });
+$("plClose").addEventListener("click", () => $("playlists").close());
+$("openPlaylists").addEventListener("click", async () => {
+  $("plEdit").hidden = true;
+  $("plNote").textContent = "";
+  await refreshSequences();
+  await loadPlaylists();
+  $("playlists").showModal();
+});
 
 refreshStatus();
 refreshSequences();
+loadPlaylists();
 setInterval(refreshStatus, 15000);

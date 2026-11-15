@@ -6,7 +6,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect } from "node:net";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { join, extname, normalize } from "node:path";
 import { homedir } from "node:os";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -156,32 +156,49 @@ async function isBuiltIn(name: string): Promise<boolean> {
   return seq.isCustom !== true;
 }
 
-/** Saves a sequence on the manager and starts it, alone or added to the rotation. */
-async function deploy(body: Json): Promise<Json> {
-  const name = String(body.name ?? "").trim();
-  const description = String(body.description ?? "").trim() || name;
-  const code = String(body.code ?? "");
-  const mode = body.mode === "add" ? "add" : "only";
-  if (!name || !code) throw new Error("Navn og kode mangler");
-
-  // getSequenceCode says isCustom false both for built-ins and for names it does
-  // not know, so look the name up in the list to tell a new name from a built-in.
-  if (await isBuiltIn(name)) {
-    throw new Error(`"${name}" er en indbygget sekvens. Vælg et andet navn.`);
+/** The first free name: "Nordlys", then "Nordlys (2)", "Nordlys (3)"... */
+async function freeName(wanted: string): Promise<string> {
+  const list = await manager({ cmd: "getSequences" });
+  const taken = new Set(((list.sequences as Json[] | undefined) ?? []).map((s) => String(s.name)));
+  if (!taken.has(wanted)) return wanted;
+  const base = wanted.replace(/ \(\d+\)$/, "");
+  for (let n = 2; ; n++) {
+    const candidate = `${base} (${n})`;
+    if (!taken.has(candidate)) return candidate;
   }
-  const existing = await manager({ cmd: "getSequenceCode", sequenceName: name });
-  if (existing.isCustom === true) {
+}
+
+/**
+ * Saves a sequence on the manager and starts it, alone or added to the
+ * rotation. A sequence that already exists is never overwritten: the new one
+ * gets the next free name ("Nordlys (2)"). Only `replace: true` updates an
+ * existing custom sequence.
+ */
+async function deploy(body: Json): Promise<Json> {
+  const wanted = String(body.name ?? "").trim();
+  const description = String(body.description ?? "").trim() || wanted;
+  const code = String(body.code ?? "");
+  const mode = body.mode === "add" ? "add" : body.mode === "save" ? "save" : "only";
+  if (!wanted || !code) throw new Error("Navn og kode mangler");
+
+  let name = wanted;
+  const existing = await manager({ cmd: "getSequenceCode", sequenceName: wanted });
+  if (body.replace === true && existing.isCustom === true) {
     const updated = await manager({
       cmd: "updateSequence", sequenceName: name, sequenceDescription: description, jsCode: code,
     });
     if (updated.status === "error") throw new Error(String(updated.error));
   } else {
+    // getSequenceCode says isCustom false both for built-ins and for unknown names,
+    // so freeName looks in the list: a built-in name also gets a number.
+    name = await freeName(wanted);
     const created = await manager({
       cmd: "createSequence", sequenceName: name, sequenceDescription: description, jsCode: code,
     });
     if (created.status !== "created") throw new Error(String(created.error ?? "Kunne ikke gemme"));
   }
 
+  if (mode === "save") return { ok: true, name, renamed: name !== wanted };
   let names = [name];
   if (mode === "add") {
     // Adding while the tree is off continues the rotation from before "Sluk".
@@ -189,7 +206,69 @@ async function deploy(body: Json): Promise<Json> {
     names = active.includes(name) ? active : [...active, name];
   }
   await manager({ cmd: "runSequences", names });
-  return { ok: true, active: names };
+  return { ok: true, name, renamed: name !== wanted, active: names };
+}
+
+// --------------------------------------------------------------- playlists ---
+
+type Playlist = { name: string; sequences: string[] };
+const PLAYLIST_FILE = join(homedir(), "Julelys", "web-playlists.json");
+
+async function loadPlaylists(): Promise<Playlist[]> {
+  try {
+    const data = JSON.parse(await readFile(PLAYLIST_FILE, "utf8"));
+    return Array.isArray(data)
+      ? data.filter((p) => p && typeof p.name === "string").map((p) => ({
+          name: String(p.name),
+          sequences: Array.isArray(p.sequences) ? p.sequences.map(String) : [],
+        }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function storePlaylists(lists: Playlist[]): Promise<void> {
+  await mkdir(join(homedir(), "Julelys"), { recursive: true });
+  // Write to a temporary file first so a crash never leaves half a file.
+  const tmp = PLAYLIST_FILE + ".tmp";
+  await writeFile(tmp, JSON.stringify(lists, null, 2));
+  await rename(tmp, PLAYLIST_FILE);
+}
+
+/** Creates or replaces a playlist. `oldName` renames one. */
+async function savePlaylist(body: Json): Promise<Json> {
+  const name = String(body.name ?? "").trim();
+  const oldName = String(body.oldName ?? name).trim();
+  const sequences = (Array.isArray(body.sequences) ? body.sequences.map(String) : []).filter((n) => n && n !== OFF);
+  if (!name) throw new Error("Playlisten mangler et navn");
+  if (!sequences.length) throw new Error("Playlisten er tom");
+  const lists = await loadPlaylists();
+  if (name !== oldName && lists.some((p) => p.name === name)) throw new Error(`Der findes allerede en playliste der hedder "${name}"`);
+  const i = lists.findIndex((p) => p.name === oldName);
+  if (i >= 0) lists[i] = { name, sequences };
+  else lists.push({ name, sequences });
+  await storePlaylists(lists);
+  return { ok: true, playlists: lists };
+}
+
+async function deletePlaylist(body: Json): Promise<Json> {
+  const name = String(body.name ?? "");
+  const lists = (await loadPlaylists()).filter((p) => p.name !== name);
+  await storePlaylists(lists);
+  return { ok: true, playlists: lists };
+}
+
+/** Plays a playlist: its sequences become the rotation (each gets the manager's slot time). */
+async function playPlaylist(body: Json): Promise<Json> {
+  const playlist = (await loadPlaylists()).find((p) => p.name === String(body.name ?? ""));
+  if (!playlist) throw new Error("Playlisten findes ikke");
+  const list = await manager({ cmd: "getSequences" });
+  const known = new Set(((list.sequences as Json[] | undefined) ?? []).map((s) => String(s.name)));
+  const names = playlist.sequences.filter((n) => known.has(n));
+  if (!names.length) throw new Error("Ingen af playlistens sekvenser findes længere");
+  await manager({ cmd: "runSequences", names });
+  return { ok: true, active: names, missing: playlist.sequences.filter((n) => !known.has(n)) };
 }
 
 // ------------------------------------------------------------------- power ---
@@ -280,6 +359,18 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/deploy") {
       return sendJson(res, 200, await deploy(await readBody(req)));
+    }
+    if (req.method === "GET" && url.pathname === "/api/playlists") {
+      return sendJson(res, 200, { playlists: await loadPlaylists() });
+    }
+    if (req.method === "POST" && url.pathname === "/api/playlists") {
+      return sendJson(res, 200, await savePlaylist(await readBody(req)));
+    }
+    if (req.method === "POST" && url.pathname === "/api/playlists/delete") {
+      return sendJson(res, 200, await deletePlaylist(await readBody(req)));
+    }
+    if (req.method === "POST" && url.pathname === "/api/playlists/play") {
+      return sendJson(res, 200, await playPlaylist(await readBody(req)));
     }
     if (req.method === "POST" && url.pathname === "/api/power") {
       const body = await readBody(req);

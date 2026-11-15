@@ -109,6 +109,26 @@
   .code summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .code textarea { margin-top: 8px; height: 260px; font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre; }
 
+  dialog.playlists { width: min(720px, 94vw); max-height: 88vh; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); }
+  dialog.playlists::backdrop { background: rgba(0, 0, 0, .6); }
+  .pl-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .pl-head h2 { margin: 0; font-size: 18px; flex: 1; }
+  .pl-body { padding: 14px 18px; overflow-y: auto; max-height: calc(88vh - 60px); display: grid; gap: 10px; }
+  .pl-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+  .pl-card.playing { border-color: var(--accent-2); }
+  .pl-card .top { display: flex; align-items: center; gap: 8px; }
+  .pl-card .top b { flex: 1; }
+  .pl-card .seqs { font-size: 13px; color: var(--muted); }
+  .pl-card .badge { font-size: 12px; color: var(--accent-2); }
+  .pl-edit { display: grid; gap: 8px; }
+  .pl-edit[hidden] { display: none; }
+  .pl-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .pl-items li { display: flex; align-items: center; gap: 6px; background: var(--bg); border-radius: 8px; padding: 4px 6px 4px 10px; }
+  .pl-items li span { flex: 1; }
+  .pl-items li button { padding: 2px 8px; font-size: 12px; }
+  .pl-empty { color: var(--muted); font-size: 13px; }
+  .pl-note { font-size: 13px; color: var(--muted); min-height: 1.4em; }
+
   @media (max-width: 860px) {
     .app { grid-template-columns: 1fr; grid-template-rows: auto auto auto; height: auto; }
     .chat { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -126,6 +146,7 @@
       <select id="open" aria-label="Åbn en sekvens">
         <option value="">Åbn sekvens…</option>
       </select>
+      <button id="openPlaylists">Playlister</button>
       <button id="off">Sluk træet</button>
     </div>
   </header>
@@ -170,6 +191,9 @@
         <button class="primary" id="deployOnly" disabled>Send til træet</button>
         <button id="deployAdd" disabled>Tilføj til rotationen</button>
       </div>
+      <select id="deployPlaylist" disabled aria-label="Gem i en playliste">
+        <option value="">Gem i en playliste…</option>
+      </select>
       <div class="note" id="deployNote"></div>
     </div>
     <details class="code">
@@ -179,6 +203,29 @@
     </details>
   </aside>
 </div>
+<dialog class="playlists" id="playlists">
+  <div class="pl-head">
+    <h2>Playlister</h2>
+    <button id="plNew">Ny playliste</button>
+    <button id="plFromNow">Ny fra det der kører</button>
+    <button id="plClose" aria-label="Luk">✕</button>
+  </div>
+  <div class="pl-body">
+    <div class="pl-edit" id="plEdit" hidden>
+      <input id="plName" placeholder="Navn på playlisten">
+      <ul class="pl-items" id="plItems"></ul>
+      <select id="plAdd" aria-label="Tilføj en sekvens"><option value="">Tilføj sekvens…</option></select>
+      <div class="row" style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="primary" id="plSavePlay">Gem og afspil</button>
+        <button id="plSave">Gem</button>
+        <button id="plCancel">Annullér</button>
+      </div>
+    </div>
+    <div class="pl-note" id="plNote"></div>
+    <div id="plList"></div>
+    <div class="pl-empty">Hver sekvens kører i manageren slot-tid (standard 60 sekunder), så skifter træet til den næste.</div>
+  </div>
+</dialog>
 <script src="app.js"></script>
 </body>
 </html>
